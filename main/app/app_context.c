@@ -19,7 +19,6 @@ uint32_t s_current_split_m = 1000;
 bool s_interval_done_queued = false;
 
 lv_disp_t *s_disp = NULL;
-lv_indev_t *s_indev_touch = NULL;
 
 qmi8658_handle_t s_imu;
 i2c_helper_t s_imu_bus;
@@ -28,7 +27,5 @@ stroke_detection_t s_stroke;
 ui_orientation_t s_current_orient = UI_ORIENT_LANDSCAPE_270;
 bool s_auto_rotate_enabled = false;
 
-int16_t s_last_touch_x = 0;
-int16_t s_last_touch_y = 0;
 
 bool s_time_synced_from_gps = false;

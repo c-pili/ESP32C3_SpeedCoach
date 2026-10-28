@@ -1,6 +1,6 @@
 # ESP32-S3 Speed Coach
 
-Open DIY GPS and stroke coach for water paddle sports (dragon boat, rowing, and similar craft). Built on ESP32-S3 with IMU stroke detection, GNSS pace/distance, and an LVGL touchscreen.
+Open DIY GPS and stroke coach for water paddle sports (dragon boat, rowing, and similar craft). Built on ESP32-S3 with IMU stroke detection, GNSS pace/distance, an LVGL display, and one physical control button.
 
 Firmware slug: `esp32s3_speed_coach`. Rename this directory from `waveshare2.8lcd_tryout` to `esp32s3_speed_coach` after closing the IDE if the folder is still the old bring-up name.
 
@@ -17,8 +17,8 @@ Firmware slug: `esp32s3_speed_coach`. Rename this directory from `waveshare2.8lc
 | Interval training | Work/rest by time, distance, or strokes with a dominant remaining display |
 | Activity logging | CSV on SD (strokes + distance splits; interval phase rows) |
 | Activity browser | Summary and split-level detail |
-| Compact live status | Recording, touch-lock, GPS quality, battery (no full app bar on water screens) |
-| Water lock | Auto-locks metric taps/swipes when a session starts; long-press the status rail to unlock. PWR still starts/stops |
+| Compact live status | Recording, GPS quality, battery (no full app bar on water screens) |
+| Physical control | One PWR button starts/stops and saves a standard activity; a 5-second hold saves then powers off |
 | Brightness / auto-dim | Settings slider; auto-dim after 15 s idle while recording |
 | Theme / orientation | Dark/light (corrected mapping), portrait-first with landscape support |
 | USB export | MSC "Export via USB" |
@@ -27,11 +27,8 @@ Firmware slug: `esp32s3_speed_coach`. Rename this directory from `waveshare2.8lc
 
 ## On-water controls
 
-- **PWR short press** (data/interval pages): start or stop/save
-- **PWR long press**: shutdown prompt
-- **Long-press status rail**: toggle water/touch lock
-- **Tap a metric** (unlocked): cycle Pace / Avg Pace / Time / Distance / Speed / SPM / Stroke Len / Strokes / HR / Catch / Arc
-- **Swipe down** (unlocked): menu. **Swipe left** (if an interval is armed): interval live page
+- **PWR press and release** (under 5 seconds): start a standard activity, or stop and save the current activity
+- **PWR hold** (5 seconds): save an active activity, then power off
 
 ## Not in this firmware (see [docs/ui_refinement.md](docs/ui_refinement.md))
 
@@ -41,11 +38,11 @@ BLE power sensors, peer link mode, interval presets, and sport profiles. Race ta
 
 ## Bill of Materials
 
-The base is a **Waveshare ESP32-S3 2.8" Touch LCD** (ST7789 + CST328 + QMI8658 + PCF85063 + TF). Add:
+The base is an **ESP32-S3 Speed Coach** (QMI8658 + PCF85063 + TF). The display is configured separately; a Sharp LS027B7DH01 memory LCD requires its own SPI/VCOM driver and wiring.
 
 | # | Item | Notes |
 |---|------|-------|
-| 1 | Waveshare ESP32-S3 2.8" Touch LCD | 240×320 |
+| 1 | ESP32-S3 board | MCU and existing sensor/SD peripherals |
 | 2 | RTC backup battery | CR2032 on RTC header |
 | 3 | LiPo 3.7 V | MX1.25 battery header |
 | 4 | GT-U8 GPS | UART 9600; TX→RXD GPIO44, RX→TXD GPIO43 |
@@ -75,8 +72,7 @@ Portrait 240×320 is the reference layout. After a UI/font change run `idf.py si
 |--------|-----------|---------|
 | IMU QMI8658 | [qmi8658](components/qmi8658) | I2C1 SDA=11 SCL=10 |
 | GPS GT-U8 | [gps_gtu8](components/gps_gtu8) | UART1 TX=43 RX=44 |
-| Display ST7789 | [lcd_st7789](components/lcd_st7789) | SPI MOSI=45 SCLK=40 DC=41 CS=42 RST=39 BL=5 (PWM) |
-| Touch CST328 | [touch_cst328](components/touch_cst328) | I2C0 SDA=1 SCL=3 RST=2 INT=4 |
+| Display | [lcd_st7789](components/lcd_st7789) | Existing ST7789 driver; Sharp LS027B7DH01 migration requires panel wiring/pin confirmation |
 | Power | [pwr_key](components/pwr_key) | KEY=6 HOLD=7 |
 | Battery | [battery_drv](components/battery_drv) | ADC GPIO8 |
 | RTC | [rtc_pcf85063](components/rtc_pcf85063) | I2C1 shared with IMU |

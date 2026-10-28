@@ -38,8 +38,7 @@ static void pwr_key_task(void *arg)
     bool pressed = false;
     int64_t press_start_ms = -1;
 
-    bool prompt_fired = false;
-    //bool toggle_fired = false;
+    bool shutdown_fired = false;
 
     while (1) {
         int64_t now_ms = esp_timer_get_time() / 1000;
@@ -58,30 +57,26 @@ static void pwr_key_task(void *arg)
         if (debounced && !pressed) {
             pressed = true;
             press_start_ms = now_ms;
-            prompt_fired = false;
+            shutdown_fired = false;
         }
 
-        // while pressed: shutdown prompt at >=10s
-        if (pressed && press_start_ms >= 0 && !prompt_fired) {
+        // A held press powers the device off without requiring a touchscreen.
+        if (pressed && press_start_ms >= 0 && !shutdown_fired) {
             int64_t held = now_ms - press_start_ms;
-            if ((uint32_t)held >= s_cfg.prompt_hold_ms) {
-                prompt_fired = true;
-                if (s_cb) s_cb(PWR_KEY_EVT_SHUTDOWN_PROMPT, s_user);
+            if ((uint32_t)held >= s_cfg.shutdown_hold_ms) {
+                shutdown_fired = true;
+                if (s_cb) s_cb(PWR_KEY_EVT_SHUTDOWN, s_user);
             }
         }
 
         // release edge
         if (!debounced && pressed) {
             pressed = false;
-            int64_t held = (press_start_ms >= 0) ? (now_ms - press_start_ms) : 0;
-
-            if (!prompt_fired) {
-                if ((uint32_t)held <= s_cfg.click_max_ms) {
-                    if (s_cb) s_cb(PWR_KEY_EVT_ACTIVITY_TOGGLE, s_user);
-                } else {
-                    if (s_cb) s_cb(PWR_KEY_EVT_SHORT_PRESS, s_user);
-                }
-            }
+            // Every release before the shutdown hold threshold toggles the
+            // activity. There is no separate display-sleep action on a
+            // button-only device.
+            if (!shutdown_fired && s_cb)
+                s_cb(PWR_KEY_EVT_ACTIVITY_TOGGLE, s_user);
 
             press_start_ms = -1;
         }
@@ -100,9 +95,7 @@ esp_err_t pwr_key_init(const pwr_key_config_t *cfg, pwr_key_cb_t cb, void *user)
 
     if (s_cfg.debounce_ms == 0) s_cfg.debounce_ms = 30;
     if (s_cfg.poll_ms == 0) s_cfg.poll_ms = 20;
-    if(s_cfg.click_max_ms == 0) s_cfg.click_max_ms = 600;
-    //if (s_cfg.toggle_hold_ms == 0) s_cfg.toggle_hold_ms = 2000;
-    if (s_cfg.prompt_hold_ms == 0) s_cfg.prompt_hold_ms = 5000;
+    if (s_cfg.shutdown_hold_ms == 0) s_cfg.shutdown_hold_ms = 5000;
 
     // KEY input
     gpio_config_t in = {

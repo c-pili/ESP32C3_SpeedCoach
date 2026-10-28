@@ -31,7 +31,6 @@ extern uint32_t s_current_split_m;
 extern bool s_interval_done_queued;
 
 extern lv_disp_t *s_disp;
-extern lv_indev_t *s_indev_touch;
 
 extern qmi8658_handle_t s_imu;
 extern i2c_helper_t s_imu_bus;
@@ -39,8 +38,5 @@ extern stroke_detection_t s_stroke;
 
 extern ui_orientation_t s_current_orient;
 extern bool s_auto_rotate_enabled;
-
-extern int16_t s_last_touch_x;
-extern int16_t s_last_touch_y;
 
 extern bool s_time_synced_from_gps;

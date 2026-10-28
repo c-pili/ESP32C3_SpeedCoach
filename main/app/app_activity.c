@@ -210,7 +210,6 @@ void activity_worker_task(void *arg)
 
         if (cmd == ACT_CMD_STOP_SAVE)
         {
-            s_activity_recording = false;
             ui_set_interval_data_visible(false);
             ui_set_race_data_visible(false);
             interval_data_page_hide_start_prompt();
@@ -320,6 +319,10 @@ void activity_worker_task(void *arg)
 
                 fclose(f);
             }
+
+            // Publish the stopped state only after the activity data and
+            // index have been flushed, so a power-off request can wait safely.
+            s_activity_recording = false;
         }
     }
 }

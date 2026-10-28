@@ -35,7 +35,6 @@ static const char *TAG = "app";
 void app_main(void)
 {
     init_display_and_lvgl();
-    init_touch_and_lvgl_input();
     init_imu();
     PCF85063_init(&s_imu_bus);
     ESP_ERROR_CHECK(nvs_helper_init());
