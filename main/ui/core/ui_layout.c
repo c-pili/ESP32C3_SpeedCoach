@@ -344,25 +344,10 @@ void ui_pages_relayout(void)
 
 void ui_set_orientation(ui_orientation_t o)
 {
-    lv_display_rotation_t rot = LV_DISPLAY_ROTATION_0;
-    switch (o)
-    {
-    case UI_ORIENT_PORTRAIT_0:
-        rot = LV_DISPLAY_ROTATION_0;
-        break;
-    case UI_ORIENT_LANDSCAPE_90:
-        rot = LV_DISPLAY_ROTATION_90;
-        break;
-    case UI_ORIENT_PORTRAIT_180:
-        rot = LV_DISPLAY_ROTATION_180;
-        break;
-    case UI_ORIENT_LANDSCAPE_270:
-        rot = LV_DISPLAY_ROTATION_270;
-        break;
-    }
-
     lvgl_port_lock(0);
-    lv_display_set_rotation(ui_s_disp, rot);
+    /* The Sharp panel is physically landscape. Keep LVGL's pixel coordinates
+     * aligned with the 400x240 framebuffer; orientation only selects layouts. */
+    lv_display_set_rotation(ui_s_disp, LV_DISPLAY_ROTATION_0);
 
     // Updates
     ui_pages_relayout();

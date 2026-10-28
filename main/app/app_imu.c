@@ -7,13 +7,13 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "gps_gtu8.h"
+#include "gps_neo_m8n.h"
 #include "interval_program.h"
 #include "math.h"
 #include "race_program.h"
 #include "ui.h"
 #include "ui_interval_data_page.h"
-#include "qmi8658.h"
+#include "mpu6050.h"
 #include "sensor_hub.h"
 #include "stroke_detection.h"
 
@@ -158,7 +158,7 @@ static ui_orientation_t decide_orientation_from_accel(float ax, float ay, float 
 
 void init_imu(void)
 {
-    ESP_LOGI(TAG, "Init IMU I2C bus + QMI8658...");
+    ESP_LOGI(TAG, "Init IMU I2C bus + MPU6050...");
 
     ESP_ERROR_CHECK(i2c_helper_init(&s_imu_bus,
                                     IMU_I2C_PORT,
@@ -166,7 +166,7 @@ void init_imu(void)
                                     IMU_SCL_GPIO,
                                     IMU_I2C_CLK));
 
-    ESP_ERROR_CHECK(qmi8658_init(&s_imu, &s_imu_bus, QMI8658_I2C_ADDR));
+    ESP_ERROR_CHECK(mpu6050_init(&s_imu, &s_imu_bus, CONFIG_IMU_MPU6050_ADDR));
 }
 
 void stroke_task(void *arg)
@@ -255,7 +255,7 @@ void stroke_task(void *arg)
         }
 
         float ax, ay, az, gx, gy, gz;
-        if (qmi8658_read_accel_gyro(&s_imu, &ax, &ay, &az, &gx, &gy, &gz) == ESP_OK)
+        if (mpu6050_read_accel_gyro(&s_imu, &ax, &ay, &az, &gx, &gy, &gz) == ESP_OK)
         {
             int64_t now_us = esp_timer_get_time();
             float t_s = (float)(now_us - t0_us) * 1e-6f;
@@ -315,7 +315,7 @@ void stroke_task(void *arg)
             uint8_t gps_bars = 0; // 0 means "no fix / searching"
             bool gps_ok = false;
 
-            if (gps_gtu8_get_latest(&fix))
+            if (gps_neo_m8n_get_latest(&fix))
             {
                 int64_t age_us = esp_timer_get_time() - fix.rx_time_us;
                 gps_connected = (age_us < 2000000);

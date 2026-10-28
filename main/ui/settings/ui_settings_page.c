@@ -7,13 +7,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include "app/app_usb_msc.h"
-#include "app/app_context.h"
 #include "nvs_helper.h"
 #include "rtc_pcf85063.h"
 #include "sensor_hub.h"
 #include "ui_sensors_page.h"
-#include "esp_err.h"
 #include "esp_log.h"
 
 /* -------------------------------------------------------------------------- */
@@ -24,12 +21,10 @@ static lv_obj_t *s_root = NULL;
 static lv_obj_t *s_body = NULL;
 static ui_status_bar_t s_status = {0};
 static lv_obj_t *s_dark_mode_sw = NULL;
-static lv_obj_t *s_usb_drive_sw = NULL;
 static lv_obj_t *s_usb_status_lbl = NULL;
 static lv_obj_t *s_split_val_lbl = NULL;
 static lv_obj_t *s_sensors_val_lbl = NULL;
 static lv_obj_t *s_datetime_lbl = NULL;
-static lv_obj_t *s_bright_lbl = NULL;
 static lv_timer_t *s_datetime_timer = NULL;
 
 // Default split is 1000m until changed
@@ -338,55 +333,6 @@ static void usb_status_set(const char *msg)
         lv_label_set_text(s_usb_status_lbl, msg ? msg : "");
 }
 
-static void usb_switch_show(bool on)
-{
-    if (!s_usb_drive_sw)
-        return;
-    if (on)
-        lv_obj_add_state(s_usb_drive_sw, LV_STATE_CHECKED);
-    else
-        lv_obj_clear_state(s_usb_drive_sw, LV_STATE_CHECKED);
-}
-
-static void usb_drive_row_click_cb(lv_event_t *e)
-{
-    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
-        return;
-
-    bool want_on = !app_usb_msc_is_active();
-
-    if (want_on && s_activity_recording)
-    {
-        usb_status_set("Stop the activity first");
-        ESP_LOGW("UI", "Cannot enable USB drive while recording");
-        return;
-    }
-    if (want_on && !s_sd.mounted)
-    {
-        usb_status_set("No SD card mounted");
-        ESP_LOGW("UI", "Cannot enable USB drive: SD not mounted");
-        return;
-    }
-
-    /* Mount/unmount runs on a worker task, so move the knob now and let
-     * settings_page_sync_usb_state() correct it when the worker reports back. */
-    usb_switch_show(want_on);
-    usb_status_set(want_on ? "Starting USB drive..." : "Stopping USB drive...");
-
-    esp_err_t ret = want_on ? app_usb_msc_request_enter() : app_usb_msc_request_leave();
-    if (ret != ESP_OK)
-    {
-        usb_switch_show(!want_on);
-        if (ret == ESP_ERR_NO_MEM)
-            usb_status_set("Not enough RAM to start USB");
-        else if (ret == ESP_ERR_INVALID_STATE)
-            usb_status_set("Busy, try again");
-        else
-            usb_status_set("Request failed");
-        ESP_LOGE("UI", "USB MSC request failed: %s", esp_err_to_name(ret));
-    }
-}
-
 static void sw_auto_rotate_event_cb(lv_event_t *e)
 {
     lv_obj_t *sw = lv_event_get_target_obj(e);
@@ -428,30 +374,11 @@ static void sw_auto_rotate_event_cb(lv_event_t *e)
     }
 }
 
-static void sw_auto_dim_event_cb(lv_event_t *e)
-{
-    lv_obj_t *sw = lv_event_get_target_obj(e);
-    bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
-    ui_set_auto_dim(on);
-    nvs_helper_set_auto_dim(on);
-}
-
 static void sw_metrics_lock_event_cb(lv_event_t *e)
 {
     lv_obj_t *sw = lv_event_get_target_obj(e);
     bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
     nvs_helper_set_metrics_lock(on);
-}
-
-static void brightness_slider_cb(lv_event_t *e)
-{
-    lv_obj_t *sl = lv_event_get_target_obj(e);
-    int32_t v = lv_slider_get_value(sl);
-    ui_set_brightness_percent((uint8_t)v);
-    nvs_helper_set_brightness((uint8_t)v);
-    if (s_bright_lbl) {
-        lv_label_set_text_fmt(s_bright_lbl, "%d%%", (int)v);
-    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -490,37 +417,8 @@ void settings_page_create(lv_obj_t *parent)
         lv_obj_t *display = section_group(s_body, "Display");
         s_dark_mode_sw = create_settings_row(display, "Dark mode", sw_dark_mode_event_cb, is_dark, true);
         create_settings_row(display, "Auto rotate", sw_auto_rotate_event_cb, is_rot, true);
-        create_settings_row(display, "Auto-dim", sw_auto_dim_event_cb, nvs_helper_get_auto_dim(), true);
 
-        lv_obj_t *bright = lv_obj_create(display);
-        lv_obj_set_height(bright, LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(bright, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_style_pad_row(bright, 2, 0);
-        group_row_chrome(bright, false);
-        lv_obj_set_style_pad_ver(bright, 8, 0);
-
-        lv_obj_t *hdr = lv_obj_create(bright);
-        lv_obj_remove_style_all(hdr);
-        lv_obj_set_width(hdr, lv_pct(100));
-        lv_obj_set_height(hdr, LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(hdr, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-        lv_obj_t *lbl = lv_label_create(hdr);
-        lv_label_set_text(lbl, "Brightness");
-        ui_theme_apply_label(lbl, false);
-        lv_obj_set_style_text_font(lbl, ui_font_caption(), 0);
-
-        s_bright_lbl = lv_label_create(hdr);
-        ui_theme_apply_label(s_bright_lbl, true);
-        lv_obj_set_style_text_font(s_bright_lbl, ui_font_caption(), 0);
-        lv_label_set_text_fmt(s_bright_lbl, "%d%%", (int)nvs_helper_get_brightness());
-
-        lv_obj_t *sl = lv_slider_create(bright);
-        lv_obj_set_width(sl, lv_pct(100));
-        lv_slider_set_range(sl, 10, 100);
-        lv_slider_set_value(sl, nvs_helper_get_brightness(), LV_ANIM_OFF);
-        lv_obj_add_event_cb(sl, brightness_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
+        create_value_row(display, "Display", "Reflective, no backlight", false);
     }
 
     {
@@ -540,8 +438,7 @@ void settings_page_create(lv_obj_t *parent)
         lv_obj_set_style_pad_row(usb, 2, 0);
         group_row_chrome(usb, false);
         lv_obj_set_style_pad_ver(usb, 6, 0);
-        lv_obj_add_flag(usb, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(usb, usb_drive_row_click_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_clear_flag(usb, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t *hdr = lv_obj_create(usb);
         lv_obj_remove_style_all(hdr);
@@ -552,20 +449,16 @@ void settings_page_create(lv_obj_t *parent)
         lv_obj_clear_flag(hdr, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t *lbl = lv_label_create(hdr);
-        lv_label_set_text(lbl, "Export via USB");
+        lv_label_set_text(lbl, "USB export unavailable on ESP32-C3");
         ui_theme_apply_label(lbl, false);
         lv_obj_set_style_text_font(lbl, ui_font_caption(), 0);
         lv_obj_set_flex_grow(lbl, 1);
-
-        s_usb_drive_sw = lv_switch_create(hdr);
-        lv_obj_clear_flag(s_usb_drive_sw, LV_OBJ_FLAG_CLICKABLE);
-        ui_theme_apply_switch(s_usb_drive_sw);
 
         s_usb_status_lbl = lv_label_create(usb);
         ui_theme_apply_label(s_usb_status_lbl, true);
         lv_obj_set_style_text_font(s_usb_status_lbl, ui_font_caption(), 0);
         lv_label_set_text(s_usb_status_lbl, "");
-        settings_page_sync_usb_state();
+        usb_status_set("SD/SPI storage port required before activity export");
         update_sensors_label();
     }
 
@@ -625,29 +518,9 @@ void settings_page_open_split_dialog(void)
 
 void settings_page_sync_usb_state(void)
 {
-    if (!s_usb_drive_sw)
+    if (!s_usb_status_lbl)
         return;
-    bool active = app_usb_msc_is_active();
-    usb_switch_show(active);
-    if (active)
-    {
-        usb_status_set("Drive ready - connect USB cable");
-        return;
-    }
-
-    esp_err_t err = app_usb_msc_last_error();
-    if (err != ESP_OK)
-    {
-        char buf[48];
-        snprintf(buf, sizeof(buf), "USB failed: %s", esp_err_to_name(err));
-        usb_status_set(buf);
-        return;
-    }
-
-    if (!s_sd.mounted)
-        usb_status_set("No SD card mounted");
-    else
-        usb_status_set("");
+    usb_status_set("USB MSC unavailable; SD/SPI storage port required for export");
 }
 
 void settings_page_sync_sensors_state(void)

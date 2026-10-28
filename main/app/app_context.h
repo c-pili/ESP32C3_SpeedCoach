@@ -9,7 +9,7 @@
 #include "activity_log.h"
 #include "i2c_helper.h"
 #include "lvgl.h"
-#include "qmi8658.h"
+#include "mpu6050.h"
 #include "sd_mmc_helper.h"
 #include "stroke_detection.h"
 #include "ui.h"
@@ -32,7 +32,7 @@ extern bool s_interval_done_queued;
 
 extern lv_disp_t *s_disp;
 
-extern qmi8658_handle_t s_imu;
+extern mpu6050_handle_t s_imu;
 extern i2c_helper_t s_imu_bus;
 extern stroke_detection_t s_stroke;
 

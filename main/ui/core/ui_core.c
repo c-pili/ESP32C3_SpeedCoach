@@ -5,7 +5,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_timer.h"
 #include "interval_program/interval_program.h"
-#include "lcd_st7789.h"
+#include "lcd_sharp_ls027.h"
 #include "nvs_helper.h"
 #include "race_program/race_program.h"
 #include "ui_activity_detail_page.h"
@@ -35,7 +35,8 @@ static void apply_backlight(uint8_t percent)
         return;
     }
     s_applied_brightness = percent;
-    lcd_st7789_set_backlight_percent(percent);
+    /* The bare Sharp panel is reflective and has no backlight. Zero controls DISP. */
+    lcd_sharp_ls027_set_display_enabled(percent != 0);
 }
 
 static void snapshot_idle(coach_ui_snapshot_t *snap)
@@ -117,8 +118,8 @@ bool ui_is_landscape(void)
 {
     if (!ui_s_disp)
         return false;
-    lv_display_rotation_t r = lv_display_get_rotation(ui_s_disp);
-    return (r == LV_DISPLAY_ROTATION_90 || r == LV_DISPLAY_ROTATION_270);
+    return lv_display_get_horizontal_resolution(ui_s_disp) >
+           lv_display_get_vertical_resolution(ui_s_disp);
 }
 
 void ui_register_stop_save_confirm_cb(ui_stop_save_confirm_cb_t cb) { ui_s_stop_save_confirm_cb = cb; }
@@ -253,7 +254,8 @@ uint8_t ui_get_brightness_percent(void)
 
 void ui_set_auto_dim(bool enabled)
 {
-    s_auto_dim = enabled;
+    (void)enabled;
+    s_auto_dim = false; /* This reflective memory LCD has no backlight to dim. */
     if (!enabled) {
         apply_backlight(s_brightness);
     }
@@ -296,7 +298,7 @@ void ui_init(lv_disp_t *disp)
     ui_s_disp = disp;
     coach_ui_snapshot_init();
     s_brightness = nvs_helper_get_brightness();
-    s_auto_dim = nvs_helper_get_auto_dim();
+    s_auto_dim = false;
     apply_backlight(s_brightness);
 
     lvgl_port_lock(0);

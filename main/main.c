@@ -9,7 +9,7 @@
 
 #include "activity.h"
 #include "activity_log.h"
-#include "gps_gtu8.h"
+#include "gps_neo_m8n.h"
 #include "nvs_helper.h"
 #include "sensor_hub.h"
 #include "rtc_pcf85063.h"
@@ -26,7 +26,6 @@
 #include "app/app_power.h"
 #include "app/app_settings.h"
 #include "app/app_time.h"
-#include "app/app_usb_msc.h"
 
 static const char *TAG = "app";
 
@@ -40,17 +39,17 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_helper_init());
     ESP_ERROR_CHECK(sensor_hub_init());
 
-    gps_gtu8_config_t gps_cfg = {
+    gps_neo_m8n_config_t gps_cfg = {
         .uart_num = UART_NUM_1,
-        .tx_gpio = 43, // board TXD
-        .rx_gpio = 44, // board RXD
-        .baud = 9600,  // common GT-U8 default
+        .tx_gpio = 21, // ESP32-C3 UART1 TX
+        .rx_gpio = 20, // ESP32-C3 UART1 RX
+        .baud = 9600,  // common NEO-M8N default
         .task_prio = 8,
         .task_stack = 4096,
         .rx_buf_size = 2048,
     };
-    ESP_ERROR_CHECK(gps_gtu8_init(&gps_cfg));
-    ESP_ERROR_CHECK(gps_gtu8_set_callback(gps_fix_cb, NULL));
+    ESP_ERROR_CHECK(gps_neo_m8n_init(&gps_cfg));
+    ESP_ERROR_CHECK(gps_neo_m8n_set_callback(gps_fix_cb, NULL));
 
     app_set_time_from_rtc();
 
@@ -68,9 +67,6 @@ void app_main(void)
 
     xTaskCreate(activity_logger_task, "activity_logger", 6144, NULL, 6, NULL);
     xTaskCreate(activity_worker_task, "activity_worker", 8192, NULL, 9, &s_act_worker_task);
-    if (app_usb_msc_init() != ESP_OK)
-        ESP_LOGE(TAG, "USB MSC worker not started");
-
     /* Create UI in separate module */
     ui_init(s_disp);
 
@@ -92,8 +88,9 @@ void app_main(void)
 
     bool saved_dark = nvs_helper_get_dark_mode();
     ui_set_dark_mode(saved_dark);
-    uint8_t saved_val = nvs_helper_get_orientation();
-    ui_set_orientation((ui_orientation_t)saved_val);
+    /* The 400x240 memory LCD is landscape and the one-button UI has no
+     * orientation control, so keep the physical panel in landscape. */
+    ui_set_orientation(UI_ORIENT_LANDSCAPE_270);
     uint32_t saved_split = nvs_helper_get_split_len();
     s_current_split_m = saved_split;
     activity_log_init(&s_act_log); // Ensure log is init'd before setting interval

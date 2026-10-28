@@ -36,8 +36,8 @@ static int32_t s_rows[] = {LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
 static bool status_bar_is_landscape(void)
 {
     lv_display_t *disp = lv_disp_get_default();
-    lv_display_rotation_t r = lv_display_get_rotation(disp);
-    return (r == LV_DISPLAY_ROTATION_90 || r == LV_DISPLAY_ROTATION_270);
+    return lv_display_get_horizontal_resolution(disp) >
+           lv_display_get_vertical_resolution(disp);
 }
 
 static void register_bar(ui_status_bar_t *bar)
@@ -119,7 +119,7 @@ static void status_bar_battery_init_once(void)
 
     battery_drv_config_t cfg = {
         .unit = ADC_UNIT_1,
-        .channel = ADC_CHANNEL_7,
+        .channel = ADC_CHANNEL_2, /* ESP32-C3 ADC1 channel 2 (GPIO2); verify board divider wiring. */
         .atten = ADC_ATTEN_DB_12,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
         .divider_ratio = 3.0f,

@@ -3,7 +3,6 @@ idf_component_register(
         "main.c"
         "app/app_activity.c"
         "app/app_context.c"
-        "app/app_usb_msc.c"
         "app/app_display.c"
         "app/app_imu.c"
         "app/app_power.c"
@@ -52,10 +51,10 @@ idf_component_register(
         "interval_program"
         "race_program"
     REQUIRES
-        lcd_st7789
+        lcd_sharp_ls027
         esp_lvgl_port
         i2c_helper
-        qmi8658
+        mpu6050
         stroke_detection
         sd_mmc_helper
         rtc_pcf85063
@@ -65,8 +64,7 @@ idf_component_register(
         activity_log
         activity_store
         storage_paths
-        gps_gtu8
+        gps_neo_m8n
         nvs_helper
         sensor_hub
-        esp_tinyusb
 )

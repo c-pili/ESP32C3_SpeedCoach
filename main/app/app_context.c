@@ -20,7 +20,7 @@ bool s_interval_done_queued = false;
 
 lv_disp_t *s_disp = NULL;
 
-qmi8658_handle_t s_imu;
+mpu6050_handle_t s_imu;
 i2c_helper_t s_imu_bus;
 stroke_detection_t s_stroke;
 

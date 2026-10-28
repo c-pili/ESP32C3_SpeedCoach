@@ -89,7 +89,7 @@ Live slots **Catch** and **Arc** sit after HR. Stroke CSV columns `Catch (deg)`,
 | Polar H9, H10 | Yes. H10 can keep two centrals; most other straps allow one, so a watch already connected may have to be disconnected first |
 | Polar OH1, Verity Sense | Yes, when their BLE heart-rate profile is on |
 | Garmin HRM-Pro, HRM-Pro Plus, HRM-Dual, HRM 600 | Yes |
-| Garmin HRM-Run, HRM-Tri, and older ANT+ only straps | No. The ESP32-S3 has no ANT+ radio |
+| Garmin HRM-Run, HRM-Tri, and older ANT+ only straps | No. The ESP32-C3 has no ANT+ radio |
 
 ## On-water check
 
