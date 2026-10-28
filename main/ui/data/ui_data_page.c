@@ -2,7 +2,6 @@
 
 #include "esp_lvgl_port.h"
 #include "lvgl.h"
-#include "nvs_helper.h"
 #include "ui_format.h"
 #include "ui_theme.h"
 #include "ui_typography.h"
@@ -13,7 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define DATA_SLOT_MAX 3
+#define DATA_SLOT_MAX 5
 
 static lv_obj_t *s_root = NULL;
 static lv_obj_t *s_slot_box[DATA_SLOT_MAX] = {0};
@@ -26,27 +25,17 @@ static lv_timer_t *s_activity_toast_timer = NULL;
 
 static data_metric_t s_slot_metric[DATA_SLOT_MAX] = {
     DATA_METRIC_PACE,
+    DATA_METRIC_TIME,
     DATA_METRIC_SPM,
+    DATA_METRIC_HR,
     DATA_METRIC_DISTANCE,
 };
 
 static data_values_t s_values = {0};
-static bool s_recording = false;
-static bool s_touch_locked = false;
 
-/* Two rows in every orientation: major value on top, two secondaries below. */
+/* Fixed dashboard for operation without a touchscreen. */
 static int32_t s_col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-static int32_t s_row_dsc[] = {LV_GRID_FR(3), LV_GRID_FR(2), LV_GRID_TEMPLATE_LAST};
-
-static void persist_metrics(void)
-{
-    uint8_t raw[3] = {
-        (uint8_t)s_slot_metric[0],
-        (uint8_t)s_slot_metric[1],
-        (uint8_t)s_slot_metric[2],
-    };
-    nvs_helper_set_data_metrics(raw);
-}
+static int32_t s_row_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
 
 static void metric_title_unit(data_metric_t metric, const char **title, const char **unit)
 {
@@ -199,27 +188,6 @@ static void apply_metric_to_slot(int idx)
     label_set_text_if_changed(s_slot_unit[idx], unit_text);
 }
 
-static void slot_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code != LV_EVENT_LONG_PRESSED && code != LV_EVENT_CLICKED) {
-        return;
-    }
-    if (s_recording && s_touch_locked) {
-        return;
-    }
-
-    uintptr_t idx_u = (uintptr_t)lv_event_get_user_data(e);
-    int idx = (int)idx_u;
-    if (idx < 0 || idx >= DATA_SLOT_MAX) {
-        return;
-    }
-
-    s_slot_metric[idx] = (data_metric_t)((s_slot_metric[idx] + 1) % DATA_METRIC_COUNT);
-    apply_metric_to_slot(idx);
-    persist_metrics();
-}
-
 static void style_box(lv_obj_t *box)
 {
     ui_theme_apply_surface(box);
@@ -234,9 +202,6 @@ static void build_slot(int idx)
     s_slot_box[idx] = lv_obj_create(s_root);
     style_box(s_slot_box[idx]);
     lv_obj_set_style_pad_all(s_slot_box[idx], 4, 0);
-
-    lv_obj_add_event_cb(s_slot_box[idx], slot_event_cb, LV_EVENT_LONG_PRESSED, (void *)(uintptr_t)idx);
-    lv_obj_add_event_cb(s_slot_box[idx], slot_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)idx);
 
     s_slot_title[idx] = lv_label_create(s_slot_box[idx]);
     lv_obj_set_style_text_font(s_slot_title[idx], ui_font_caption(), 0);
@@ -265,14 +230,16 @@ static void apply_layout(void)
     lv_obj_set_style_pad_column(s_root, 4, 0);
     lv_obj_set_style_border_width(s_root, 0, 0);
 
-    lv_obj_set_style_text_font(s_slot_value[0], ui_font_value_lg(), 0);
-    lv_obj_set_style_text_font(s_slot_value[1], ui_font_value_sm(), 0);
-    lv_obj_set_style_text_font(s_slot_value[2], ui_font_value_sm(), 0);
+    for (int i = 0; i < DATA_SLOT_MAX; i++) {
+        lv_obj_set_style_text_font(s_slot_value[i], i == 0 ? ui_font_value_lg() : ui_font_value_sm(), 0);
+    }
 
     lv_obj_set_grid_dsc_array(s_root, s_col_dsc, s_row_dsc);
-    lv_obj_set_grid_cell(s_slot_box[0], LV_GRID_ALIGN_STRETCH, 0, 2, LV_GRID_ALIGN_STRETCH, 0, 1);
-    lv_obj_set_grid_cell(s_slot_box[1], LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-    lv_obj_set_grid_cell(s_slot_box[2], LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+    lv_obj_set_grid_cell(s_slot_box[0], LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
+    lv_obj_set_grid_cell(s_slot_box[1], LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
+    lv_obj_set_grid_cell(s_slot_box[2], LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+    lv_obj_set_grid_cell(s_slot_box[3], LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+    lv_obj_set_grid_cell(s_slot_box[4], LV_GRID_ALIGN_STRETCH, 0, 2, LV_GRID_ALIGN_STRETCH, 2, 1);
 }
 
 static void activity_toast_hide_cb(lv_timer_t *t)
@@ -426,8 +393,6 @@ void data_page_apply_snapshot(const coach_ui_snapshot_t *snap)
     if (!snap || !s_root) {
         return;
     }
-    s_recording = snap->recording;
-    s_touch_locked = snap->touch_locked;
     s_values.time_s = snap->time_s;
     s_values.distance_m = snap->distance_m;
     s_values.pace_s_per_500m = snap->pace_s_per_500m;

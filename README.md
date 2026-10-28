@@ -10,7 +10,7 @@ Firmware slug: `esp32s3_speed_coach`. Rename this directory from `waveshare2.8lc
 
 | Feature | Description |
 |--------|-------------|
-| Live metrics | Instant pace `/500 m`, SPM, distance, time, speed, stroke length, stroke count |
+| Fixed live dashboard | Pace `/500 m`, elapsed time, stroke rate (SPM), distance, and heart rate (bpm) always visible |
 | Split row | Progress through the configured split, session average pace, last-split delta |
 | GPS speed & distance | Instant and average pace from GT-U8 GNSS; stale GPS is flagged and does not zero averages |
 | Stroke detection | Count, SPM, drive/recovery times from QMI8658 |
@@ -22,13 +22,14 @@ Firmware slug: `esp32s3_speed_coach`. Rename this directory from `waveshare2.8lc
 | Brightness / auto-dim | Settings slider; auto-dim after 15 s idle while recording |
 | Theme / orientation | Dark/light (corrected mapping), portrait-first with landscape support |
 | USB export | MSC "Export via USB" |
-| BLE heart rate | Polar / Garmin strap (`0x180D`): live HR metric, status-rail glyph, CSV column. See [docs/ble_sensors.md](docs/ble_sensors.md) |
+| BLE heart rate | Automatically discovers a Suunto HR broadcaster on first boot, saves it, and reconnects on later boots; live bpm is always on the dashboard |
 | BLE RowPod | Per-stroke catch, finish, and arc from the pod summary characteristic. See [docs/ble_sensors.md](docs/ble_sensors.md) |
 
 ## On-water controls
 
 - **PWR press and release** (under 5 seconds): start a standard activity, or stop and save the current activity
 - **PWR hold** (5 seconds): save an active activity, then power off
+- To provide bpm, enable **Heart Rate Broadcast** in the Suunto sport-mode settings and start that sport mode; the Speed Coach scans for the standard BLE heart-rate service and remembers the Suunto device
 
 ## Not in this firmware (see [docs/ui_refinement.md](docs/ui_refinement.md))
 

@@ -6,6 +6,7 @@
 #include "nvs_helper.h"
 
 #include <stdio.h>
+#include <ctype.h>
 #include <string.h>
 
 #if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED && defined(CONFIG_BT_NIMBLE_ENABLED)
@@ -38,6 +39,7 @@ static const ble_uuid128_t s_uuid_motion =
 #define HR_BACKOFF_MIN_MS  2000
 #define HR_BACKOFF_MAX_MS  15000
 #define HR_BACKOFF_BOOT_MS 500
+#define HR_DISCOVERY_MS    10000
 
 typedef enum {
     GAP_IDLE = 0,
@@ -95,6 +97,21 @@ static bool addr_eq(const uint8_t a[6], const uint8_t b[6])
     return memcmp(a, b, 6) == 0;
 }
 
+static bool name_contains_suunto(const char *name)
+{
+    static const char needle[] = "suunto";
+    if (!name) return false;
+    for (const char *p = name; *p; p++) {
+        size_t i = 0;
+        while (needle[i] && p[i] &&
+               tolower((unsigned char)p[i]) == needle[i]) {
+            i++;
+        }
+        if (needle[i] == '\0') return true;
+    }
+    return false;
+}
+
 static void copy_name(char *dst, size_t dst_len, const uint8_t *name, uint8_t name_len)
 {
     if (!dst || dst_len == 0) {
@@ -150,9 +167,16 @@ static void arm_hr_if_needed(void)
     }
     xSemaphoreTake(s_mux, portMAX_DELAY);
     sensor_kind_t kind = reconnect_kind_locked();
+    bool discover_hr = !s_slots[SENSOR_KIND_HR].saved &&
+                       !s_slots[SENSOR_KIND_HR].paused;
+    if (kind == SENSOR_KIND_COUNT && discover_hr) {
+        kind = SENSOR_KIND_HR;
+    }
     bool want = (kind < SENSOR_KIND_COUNT);
     bool busy = (s_gap != GAP_IDLE) || (s_pend != PEND_NONE);
-    uint32_t delay = want ? s_slots[kind].backoff_ms : 0;
+    uint32_t delay = !want ? 0 :
+                     (discover_hr && kind == SENSOR_KIND_HR
+                          ? HR_DISCOVERY_MS : s_slots[kind].backoff_ms);
     xSemaphoreGive(s_mux);
     if (!want) {
         ble_npl_callout_stop(&s_hr_reconn);
@@ -252,7 +276,13 @@ static void on_sync(void)
     ESP_LOGI(TAG, "nimble synced addr_type=%u heap=%u",
              (unsigned)s_own_addr_type,
              (unsigned)esp_get_free_heap_size());
-    arm_hr_if_needed();
+    if (!s_slots[SENSOR_KIND_HR].saved) {
+        /* First boot pairing: discover a standard BLE Heart Rate Service and
+         * remember the Suunto watch so subsequent boots reconnect directly. */
+        (void)begin_scan(SENSOR_KIND_HR);
+    } else {
+        arm_hr_if_needed();
+    }
 }
 
 static sensor_kind_t classify(const struct ble_hs_adv_fields *fields)
@@ -355,9 +385,16 @@ static void hr_reconn_cb(struct ble_npl_event *ev)
     (void)ev;
     xSemaphoreTake(s_mux, portMAX_DELAY);
     sensor_kind_t kind = reconnect_kind_locked();
+    bool discover_hr = !s_slots[SENSOR_KIND_HR].saved &&
+                       !s_slots[SENSOR_KIND_HR].paused &&
+                       kind == SENSOR_KIND_COUNT;
+    if (discover_hr) {
+        kind = SENSOR_KIND_HR;
+    }
     bool ready = kind < SENSOR_KIND_COUNT && s_gap == GAP_IDLE && s_pend == PEND_NONE && s_synced;
+    bool scan = ready && discover_hr;
     sensor_hub_device_t dev = {0};
-    if (ready) {
+    if (ready && !scan) {
         sensor_slot_t *slot = &s_slots[kind];
         memcpy(dev.addr, slot->addr, 6);
         dev.addr_type = slot->addr_type;
@@ -368,6 +405,10 @@ static void hr_reconn_cb(struct ble_npl_event *ev)
     xSemaphoreGive(s_mux);
     if (!ready) {
         arm_hr_if_needed();
+        return;
+    }
+    if (scan) {
+        (void)begin_scan(SENSOR_KIND_HR);
         return;
     }
     if (issue_connect(kind, &dev) != ESP_OK) {
@@ -500,21 +541,36 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         }
         return 0;
 
-    case BLE_GAP_EVENT_DISC_COMPLETE:
+    case BLE_GAP_EVENT_DISC_COMPLETE: {
         ESP_LOGI(TAG, "scan done n=%u", (unsigned)s_found_n);
         xSemaphoreTake(s_mux, portMAX_DELAY);
-        /* One advertiser is the pod or strap the user just asked for. */
-        if (s_pend == PEND_NONE && s_found_n == 1) {
+        /* Prefer a Suunto HR broadcaster; otherwise auto-connect only when
+         * discovery found exactly one compatible sensor. */
+        int selected = -1;
+        if (s_pend == PEND_NONE && s_scan_kind == SENSOR_KIND_HR) {
+            for (size_t i = 0; i < s_found_n; i++) {
+                if (s_found[i].kind == SENSOR_KIND_HR &&
+                    name_contains_suunto(s_found[i].name)) {
+                    selected = (int)i;
+                    break;
+                }
+            }
+        }
+        if (s_pend == PEND_NONE && selected < 0 && s_found_n == 1) {
+            selected = 0;
+        }
+        if (s_pend == PEND_NONE && selected >= 0) {
             s_pend = PEND_CONNECT;
-            s_pend_kind = s_found[0].kind;
-            s_pend_dev = s_found[0];
+            s_pend_kind = s_found[selected].kind;
+            s_pend_dev = s_found[selected];
             ESP_LOGI(TAG, "auto-connect %s",
-                     s_found[0].name[0] ? s_found[0].name : "sensor");
+                     s_found[selected].name[0] ? s_found[selected].name : "sensor");
         }
         bump_locked();
         xSemaphoreGive(s_mux);
         run_pending();
         return 0;
+    }
 
     case BLE_GAP_EVENT_CONNECT: {
         sensor_slot_t *slot = arg;

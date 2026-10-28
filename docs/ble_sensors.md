@@ -11,9 +11,11 @@ The speed coach is a NimBLE **central and observer**. It does not advertise. Two
 
 Free internal heap is logged immediately before and after `nimble_port_init`. Do not turn on PSRAM to hide that cost.
 
-## Heart-rate strap
+## Heart-rate strap or Suunto watch
 
-The Sensors page **Heart rate** card scans only for advertisements that carry 16-bit UUID `0x180D` (or Heart Rate service data). A tap connects, writes the address and name to NVS (`hr_addr`, `hr_atyp`, `hr_name`), and runs GATT discovery on the NimBLE host task:
+At boot, if no HR device has been saved yet, the coach automatically scans for advertisements that carry the standard Heart Rate Service UUID `0x180D` (or Heart Rate service data). It prefers an advertiser named Suunto; if there is exactly one compatible advertiser, it connects to that device. The selected address and name are saved to NVS (`hr_addr`, `hr_atyp`, `hr_name`) for automatic reconnects on later boots. If multiple non-Suunto HR devices are visible, no device is selected.
+
+The Suunto watch must support **Heart Rate Broadcast**, and that setting must be enabled in the sport mode before starting the workout. Suunto lists this feature for Suunto Vertical 2, Suunto Race 2, Suunto Race, and Suunto Race S. The watch advertises HR for the duration of that workout. The coach then runs GATT discovery on its NimBLE host task:
 
 1. Discover service `0x180D`, characteristic Heart Rate Measurement `0x2A37`, then its descriptors.
 2. Write `0x0001` to CCCD `0x2902` (notifications). If the characteristic is indicate-only, write `0x0002` instead.
@@ -44,7 +46,7 @@ Only one `ble_gap_connect` is outstanding. A scan cancels a pending reconnect an
 - Sensors page: name, bpm, battery, Pair / Reconnect / Disconnect / Forget.
 - Status rail: a Bluetooth glyph. Hidden when no strap is saved or the user disconnected it. Accent colour while a sample is fresh. Red when a saved strap is missing or stale.
 - Settings row: `HR On / Pod Off`.
-- Live data slots: **HR** is the metric after Strokes. Tap a slot until it appears. `0` renders as `--`.
+- Fixed live dashboard: Pace, elapsed time, SPM, distance, and **HR** are always visible. `0` renders as `--`.
 - CSV: `Heart Rate (bpm)` appended to each stroke row (blank when there is no fresh sample). `Avg HR` appended to split and interval rows (mean of the non-zero samples in that split or phase, blank when there were none). Splits header line `HR Sensor,<name>` or `HR Sensor,none`. The activity detail title shows `HR <avg>` when the splits file has samples.
 
 `stroke_task` is still the only writer of `coach_ui_snapshot_t`. BLE callbacks never call LVGL. The Sensors page polls `sensor_hub_get_epoch()` from an LVGL timer.
@@ -83,6 +85,7 @@ Live slots **Catch** and **Arc** sit after HR. Stroke CSV columns `Catch (deg)`,
 
 | Strap | BLE heart rate |
 |-------|----------------|
+| Suunto Race, Race S, Race 2, Vertical 2 | Yes, with Heart Rate Broadcast enabled in the active sport mode |
 | Polar H9, H10 | Yes. H10 can keep two centrals; most other straps allow one, so a watch already connected may have to be disconnected first |
 | Polar OH1, Verity Sense | Yes, when their BLE heart-rate profile is on |
 | Garmin HRM-Pro, HRM-Pro Plus, HRM-Dual, HRM 600 | Yes |
@@ -90,7 +93,7 @@ Live slots **Catch** and **Arc** sit after HR. Stroke CSV columns `Catch (deg)`,
 
 ## On-water check
 
-1. Pair a Polar H9 or H10 and a Garmin HRM-Pro or Dual. Compare bpm with the vendor app or a watch.
+1. Enable Suunto Heart Rate Broadcast for a compatible sport mode, start a workout, and let the coach discover it on first use. Compare bpm with the watch.
 2. Take the strap off. The HR metric and the Sensors status show no bpm within 5 s, and the rail glyph turns red.
 3. Power-cycle the strap during a session. It reconnects without opening the Sensors page. The CSV stroke column fills again.
 4. Tap Disconnect. The glyph hides and the coach does not reconnect until Reconnect.

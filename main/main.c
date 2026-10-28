@@ -74,16 +74,15 @@ void app_main(void)
     /* Create UI in separate module */
     ui_init(s_disp);
 
-    /* Default Data page metrics: pace / SPM / distance (NVS override) */
-    uint8_t saved_slots[3];
-    nvs_helper_get_data_metrics(saved_slots);
-    data_metric_t metrics[3];
-    for (int i = 0; i < 3; i++) {
-        metrics[i] = (saved_slots[i] < DATA_METRIC_COUNT)
-                         ? (data_metric_t)saved_slots[i]
-                         : DATA_METRIC_PACE;
-    }
-    data_page_set_metrics(metrics, 3);
+    /* Fixed dashboard metrics for button-only operation. */
+    const data_metric_t metrics[] = {
+        DATA_METRIC_PACE,
+        DATA_METRIC_TIME,
+        DATA_METRIC_SPM,
+        DATA_METRIC_HR,
+        DATA_METRIC_DISTANCE,
+    };
+    data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
 
     esp_err_t sd_err = sd_mmc_helper_mount(&s_sd, "/sdcard");
     if (sd_err != ESP_OK)
