@@ -83,6 +83,9 @@ typedef struct {
     bool opened;
     FILE *f_main;             // <--- Updated
     FILE *f_splits;           // <--- Updated
+    FILE *f_tcx;
+    long tcx_duration_pos;
+    long tcx_distance_pos;
     char filename_base[128];   
     uint32_t flush_every_n;   
     uint32_t pending;         

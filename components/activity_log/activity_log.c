@@ -6,6 +6,7 @@
 #include <time.h>
 #include "math.h"
 #include "esp_log.h"
+#include "tcx_export.h"
 
 static const char *TAG = "activity_log";
 
@@ -252,6 +253,18 @@ esp_err_t activity_log_start(activity_log_t *log, sd_mmc_helper_t *sd, time_t st
         return ESP_FAIL;
     }
 
+    char full_path_tcx[180];
+    snprintf(full_path_tcx, sizeof(full_path_tcx), "%s/activities/%s/Workout.tcx",
+             sd->mount_point, base_name);
+    log->f_tcx = fopen(full_path_tcx, "w");
+    if (log->f_tcx) {
+        struct tm utc_tm;
+        char start_iso[32];
+        gmtime_r(&start_ts, &utc_tm);
+        strftime(start_iso, sizeof(start_iso), "%Y-%m-%dT%H:%M:%SZ", &utc_tm);
+        tcx_write_header(log->f_tcx, start_iso, &log->tcx_duration_pos, &log->tcx_distance_pos);
+    }
+
     // 5. Open Splits Log File (_Splits.csv)
     char full_path_splits[180];
     snprintf(full_path_splits, sizeof(full_path_splits), "%s/activities/%s/Splits.csv",
@@ -364,6 +377,15 @@ esp_err_t activity_log_append(activity_log_t *log, const activity_log_row_t *row
             (double)row->drive_time_s, (double)row->recovery_time_s, (double)row->recovery_ratio,
             hr_str, catch_str, finish_str, arc_str);
 
+    if (log->f_tcx) {
+        struct tm utc_tm;
+        char point_iso[32];
+        gmtime_r(&row->rtc_time, &utc_tm);
+        strftime(point_iso, sizeof(point_iso), "%Y-%m-%dT%H:%M:%SZ", &utc_tm);
+        tcx_append_trackpoint(log->f_tcx, point_iso, row->gps_lat, row->gps_lon,
+                              0.0, row->hr_bpm);
+    }
+
     if (row->hr_bpm > 0 && log->hr_n < UINT16_MAX) {
         log->hr_sum += row->hr_bpm;
         log->hr_n++;
@@ -389,7 +411,6 @@ esp_err_t activity_log_append(activity_log_t *log, const activity_log_row_t *row
                                    row->spm_instant,
                                    false);
     }
-
     return ESP_OK;
 }
 
@@ -476,6 +497,9 @@ esp_err_t activity_log_finalize(activity_log_t *log, float final_distance_m, flo
     {
         activity_log_update_splits(log, final_distance_m, final_time_s, avg_spm, true);
     }
+    if (log->f_tcx)
+        tcx_set_summary(log->f_tcx, log->tcx_duration_pos, log->tcx_distance_pos,
+                        final_distance_m, final_time_s);
     return ESP_OK;
 }
 
@@ -494,6 +518,10 @@ esp_err_t activity_log_stop(activity_log_t *log)
             fflush(log->f_splits);
             fclose(log->f_splits);
             log->f_splits = NULL;
+        }
+        if (log->f_tcx) {
+            tcx_close_file(log->f_tcx);
+            log->f_tcx = NULL;
         }
         log->opened = false;
     }

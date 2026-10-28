@@ -2,6 +2,7 @@
 
 #include "storage_paths.h"
 #include "app_context.h"
+#include "wifi_export.h"
 #include "app_imu.h"
 #include "activity.h"
 #include "activity_log.h"
@@ -64,6 +65,7 @@ void activity_worker_task(void *arg)
 
         if (cmd == ACT_CMD_START)
         {
+            (void)wifi_export_stop();
             s_activity_recording = true;
             s_session_time_s = 0.0f;
             s_session_last_us = esp_timer_get_time();
@@ -97,6 +99,7 @@ void activity_worker_task(void *arg)
 
         if (cmd == ACT_CMD_START_INTERVAL_NORMAL)
         {
+            (void)wifi_export_stop();
             s_activity_recording = true;
             s_session_time_s = 0.0f;
             s_session_last_us = esp_timer_get_time();
@@ -137,6 +140,7 @@ void activity_worker_task(void *arg)
 
         if (cmd == ACT_CMD_START_INTERVAL_STEP)
         {
+            (void)wifi_export_stop();
             s_activity_recording = true;
             s_session_time_s = 0.0f;
             s_session_last_us = esp_timer_get_time();
@@ -176,6 +180,7 @@ void activity_worker_task(void *arg)
 
         if (cmd == ACT_CMD_START_RACE)
         {
+            (void)wifi_export_stop();
             s_activity_recording = true;
             s_session_time_s = 0.0f;
             s_session_last_us = esp_timer_get_time();
@@ -323,6 +328,10 @@ void activity_worker_task(void *arg)
             // Publish the stopped state only after the activity data and
             // index have been flushed, so a power-off request can wait safely.
             s_activity_recording = false;
+            if (s_sd.mounted) {
+                esp_err_t ap_err = wifi_export_start();
+                if (ap_err != ESP_OK) ESP_LOGE("ACT", "Wi-Fi export AP restart failed: %s", esp_err_to_name(ap_err));
+            }
         }
     }
 }

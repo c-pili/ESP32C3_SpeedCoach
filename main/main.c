@@ -14,6 +14,8 @@
 #include "sensor_hub.h"
 #include "rtc_pcf85063.h"
 #include "sd_mmc_helper.h"
+#include "flash_storage.h"
+#include "wifi_export.h"
 
 #include "ui.h"
 #include "ui_data_page.h"
@@ -80,11 +82,13 @@ void app_main(void)
     };
     data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
 
-    esp_err_t sd_err = sd_mmc_helper_mount(&s_sd, "/sdcard");
+    esp_err_t sd_err = flash_storage_mount(&s_sd);
     if (sd_err != ESP_OK)
     {
-        ESP_LOGW(TAG, "SD mount failed: %s (continuing)", esp_err_to_name(sd_err));
+        ESP_LOGW(TAG, "Flash activity storage mount failed: %s", esp_err_to_name(sd_err));
     }
+    esp_err_t ap_err = wifi_export_start();
+    if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
 
     bool saved_dark = nvs_helper_get_dark_mode();
     ui_set_dark_mode(saved_dark);
