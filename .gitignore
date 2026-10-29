@@ -9,4 +9,5 @@
 /managed_components/
 
 # Generated filesystem image
-/storage_image/
+/storage_image/*
+!/storage_image/.gitkeep
