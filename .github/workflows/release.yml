@@ -1,0 +1,39 @@
+name: Build and release firmware
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build ESP32-C3 firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.1
+          target: esp32c3
+          command: >-
+            idf.py build &&
+            cd build &&
+            esptool.py --chip esp32c3 merge_bin --flash_mode dio --flash_freq 80m --flash_size 4MB -o ../firmware.bin @flash_args
+
+      - name: Publish release for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: commit-${{ github.sha }}
+        run: |
+          gh release create "$TAG" \
+            firmware.bin \
+            build/storage.bin \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Firmware $GITHUB_SHA" \
+            --generate-notes
