@@ -1,0 +1,28 @@
+menu "Sharp LS027B7DH01 Memory LCD"
+
+config LCD_SHARP_PIN_SCLK
+    int "SCLK GPIO"
+    range 0 21
+    default 4
+
+config LCD_SHARP_PIN_MOSI
+    int "SI/MOSI GPIO"
+    range 0 21
+    default 5
+
+config LCD_SHARP_PIN_SCS
+    int "SCS GPIO (active high)"
+    range 0 21
+    default 10
+
+config LCD_SHARP_PIN_DISP
+    int "DISP GPIO"
+    range 0 21
+    default 3
+
+config LCD_SHARP_SPI_CLOCK_HZ
+    int "SPI clock (Hz; maximum 2 MHz)"
+    range 100000 2000000
+    default 2000000
+
+endmenu

@@ -1,0 +1,24 @@
+menu "MPU6050 IMU Configuration"
+
+config IMU_MPU6050_I2C_PORT
+    int "MPU6050 I2C port number"
+    default 0
+
+config IMU_MPU6050_SDA
+    int "MPU6050 SDA GPIO"
+    default 0
+
+config IMU_MPU6050_SCL
+    int "MPU6050 SCL GPIO"
+    default 1
+
+config IMU_MPU6050_I2C_CLK
+    int "MPU6050 I2C clock speed (Hz)"
+    default 400000
+
+config IMU_MPU6050_ADDR
+    hex "MPU6050 7-bit I2C address"
+    range 0x68 0x69
+    default 0x68
+
+endmenu
