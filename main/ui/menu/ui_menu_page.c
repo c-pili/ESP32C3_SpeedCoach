@@ -17,12 +17,11 @@ extern const lv_font_t lv_font_fa_solid_28;
 
 /* UTF-8 encodings of the selected glyphs */
 #define FA_ICON_MEDAL     "\xEF\x96\xA2"   /* U+F5A2  fa-medal       */
-#define FA_ICON_STOPWATCH "\xEF\x8B\xB2"   /* U+F2F2  fa-stopwatch   */
 #define FA_ICON_SLIDERS   "\xEF\x87\x9E"   /* U+F1DE  fa-sliders     */
 
 static lv_obj_t *s_grid = NULL;
 
-#define MENU_ICON_COUNT 6
+#define MENU_ICON_COUNT 3
 static lv_obj_t *s_btns[MENU_ICON_COUNT] = {0};
 static uint8_t s_btn_count = 0;
 
@@ -48,18 +47,6 @@ static void menu_icon_cb(lv_event_t *e)
     if (strcmp(id, "activity_summary") == 0) {
         ui_go_to_page(UI_ACTIVITY_SUMMARY_PAGE, true);
         lv_async_call(activity_summary_refresh_async, NULL);
-        return;
-    }
-    if (strcmp(id, "interval") == 0) {
-        ui_defer_go_to_page(UI_INTERVAL_SETUP_PAGE);
-        return;
-    }
-    if (strcmp(id, "race") == 0) {
-        ui_defer_go_to_page(UI_RACE_SETUP_PAGE);
-        return;
-    }
-    if (strcmp(id, "step") == 0) {
-        ui_defer_go_to_page(UI_STEP_SETUP_PAGE);
         return;
     }
     if (strcmp(id, "sensors") == 0) {
@@ -205,12 +192,6 @@ void menu_page_create(lv_obj_t *parent)
     s_btn_count = 0;
     s_btns[s_btn_count++] = create_icon_btn(s_grid, FA_ICON_MEDAL, "Activity", "activity_summary",
                                             btn_size, &lv_font_fa_solid_28);
-    s_btns[s_btn_count++] = create_icon_btn(s_grid, FA_ICON_STOPWATCH, "Interval", "interval",
-                                            btn_size, &lv_font_fa_solid_28);
-    s_btns[s_btn_count++] = create_icon_btn(s_grid, LV_SYMBOL_PLAY, "Race", "race",
-                                            btn_size, &lv_font_montserrat_28);
-    s_btns[s_btn_count++] = create_icon_btn(s_grid, LV_SYMBOL_UP, "Step Test", "step",
-                                            btn_size, &lv_font_montserrat_28);
     s_btns[s_btn_count++] = create_icon_btn(s_grid, LV_SYMBOL_BLUETOOTH, "Sensors", "sensors",
                                             btn_size, &lv_font_montserrat_28);
     s_btns[s_btn_count++] = create_icon_btn(s_grid, FA_ICON_SLIDERS, "Settings", "settings",

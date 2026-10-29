@@ -5,7 +5,7 @@ The speed coach is a NimBLE **central and observer**. It does not advertise. Two
 | Slot | What it connects to | Stage |
 |------|---------------------|--------|
 | Heart rate | Any strap that advertises the standard Heart Rate Service `0x180D` | Shipped |
-| RowPod | C3 motion tracker advertising `9b7e1000-2b2f-4f71-9b86-4bb2e6d54f00` | GAP connect only. Stroke metrics are the next stage |
+| RowPod | C3 motion tracker advertising `9b7e1000-2b2f-4f71-9b86-4bb2e6d54f00` | Optional telemetry path; UI controls are not available in the button-only interface |
 
 `CONFIG_BT_NIMBLE_MAX_CONNECTIONS` is 2. ATT MTU stays 23. Bonding stays off: the heart-rate profile does not need it, and a bond table costs RAM on a board with no PSRAM.
 
@@ -37,23 +37,20 @@ Off-skin (`contact == 2`) is stored as 0 bpm. A sample older than 5 s is also re
 
 ### Reconnect
 
-A saved strap reconnects by itself after boot and after a drop, unless the user tapped **Disconnect** (that pause clears on **Reconnect**, **Forget**, or reboot). The timer is a NimBLE callout, so it runs on the host task next to GAP events. The first try is at 500 ms; after a failure the delay is 2 s and doubles up to 15 s.
+A saved strap reconnects automatically after boot and after a connection drop. The retry timer runs on the NimBLE host task. The first try is at 500 ms; after a failure the delay is 2 s and doubles up to 15 s. The single-button firmware has no manual disconnect or pairing screen.
 
 Only one `ble_gap_connect` is outstanding. A scan cancels a pending reconnect and arms it again when the scan ends. Opening Sensors does not start a scan by itself, so a reconnect already in progress is left alone.
 
 ### What the athlete sees
 
-- Sensors page: name, bpm, battery, Pair / Reconnect / Disconnect / Forget.
-- Status rail: a Bluetooth glyph. Hidden when no strap is saved or the user disconnected it. Accent colour while a sample is fresh. Red when a saved strap is missing or stale.
-- Settings row: `HR On / Pod Off`.
 - Fixed live dashboard: Pace, elapsed time, SPM, distance, and **HR** are always visible. `0` renders as `--`.
-- CSV: `Heart Rate (bpm)` appended to each stroke row (blank when there is no fresh sample). `Avg HR` appended to split and interval rows (mean of the non-zero samples in that split or phase, blank when there were none). Splits header line `HR Sensor,<name>` or `HR Sensor,none`. The activity detail title shows `HR <avg>` when the splits file has samples.
+- CSV: `Heart Rate (bpm)` appended to each stroke row (blank when there is no fresh sample). `Avg HR` is appended to split rows (mean of the non-zero samples in that split). Splits header line `HR Sensor,<name>` or `HR Sensor,none`. The activity detail title shows `HR <avg>` when the splits file has samples.
 
-`stroke_task` is still the only writer of `coach_ui_snapshot_t`. BLE callbacks never call LVGL. The Sensors page polls `sensor_hub_get_epoch()` from an LVGL timer.
+`stroke_task` is the only writer of `coach_ui_snapshot_t`. BLE callbacks never call LVGL.
 
 ## RowPod
 
-The **RowPod** card scans for motion service `9b7e1000-2b2f-4f71-9b86-4bb2e6d54f00`. The address stays in `sn_addr` / `sn_atyp` (a pairing from older firmware still loads). The name is `sn_name`.
+The firmware can reconnect to a saved motion pod and scans for motion service `9b7e1000-2b2f-4f71-9b86-4bb2e6d54f00`. The address stays in `sn_addr` / `sn_atyp` (a pairing from older firmware still loads). The name is `sn_name`.
 
 After connect the coach looks for summary characteristic `9b7e1005-2b2f-4f71-9b86-4bb2e6d54f00` and subscribes. One 20-byte notify arrives per finished stroke (protocol version 1):
 
@@ -71,11 +68,11 @@ After connect the coach looks for summary characteristic `9b7e1005-2b2f-4f71-9b8
 | 18 | u8 | battery percent, 255 if unknown |
 | 19 | u8 | reserved |
 
-Control `9b7e200c-2b2f-4f71-9b86-4bb2e6d54f00` is write-only. Opcode 1 zeros the oar (hold it square and perpendicular). Opcode 2 plus a byte picks the side: 0 stroke, 1 bow. Opcode 3 clears the in-progress stroke. **Zero oar** and **Stroke/Bow** on the RowPod card send these. Side and zero are stored on the pod.
+Control `9b7e200c-2b2f-4f71-9b86-4bb2e6d54f00` is write-only. Opcode 1 zeros the oar (hold it square and perpendicular). Opcode 2 plus a byte picks the side: 0 stroke, 1 bow. Opcode 3 clears the in-progress stroke. These commands are not exposed by the current one-button UI. Side and zero are stored on the pod.
 
 The pod computes the angles. It does not send the 56 Hz IMU stream to the coach. Capability flag `0x40` on `…2009` means this summary exists. A pod built before that flag still connects; the card stays at GAP and the catch/arc metrics stay `--`.
 
-A saved pod reconnects on its own, same backoff as the strap, unless the user tapped Disconnect. The pod allows one central, so the phone app cannot attach while the coach holds the link. Forget or Disconnect releases it.
+A saved pod reconnects on its own, with the same backoff as the strap. The pod allows one central, so the phone app cannot attach while the coach holds the link.
 
 The coach asks for a 30–50 ms connection interval after the summary subscribe. The pod does not push its 7.5 ms capture interval unless a motion characteristic is also subscribed.
 
@@ -93,9 +90,7 @@ Live slots **Catch** and **Arc** sit after HR. Stroke CSV columns `Catch (deg)`,
 
 ## On-water check
 
-1. Enable Suunto Heart Rate Broadcast for a compatible sport mode, start a workout, and let the coach discover it on first use. Compare bpm with the watch.
-2. Take the strap off. The HR metric and the Sensors status show no bpm within 5 s, and the rail glyph turns red.
-3. Power-cycle the strap during a session. It reconnects without opening the Sensors page. The CSV stroke column fills again.
-4. Tap Disconnect. The glyph hides and the coach does not reconnect until Reconnect.
-5. Open the new CSV in a spreadsheet. Old columns are in the same places. `Heart Rate (bpm)` is the last stroke column. `Avg HR` is the last split column.
-6. Water lock and the PWR key behave as before.
+1. Enable Suunto Heart Rate Broadcast for a compatible sport mode, start a workout, and let the coach discover it on first use. Compare the displayed bpm with the watch.
+2. Take the strap off. The HR metric changes to `--` after five seconds without a fresh sample.
+3. Power-cycle the strap during a session. It reconnects automatically and the CSV stroke column fills again.
+4. Open a completed TCX or CSV export and verify the heart-rate samples.

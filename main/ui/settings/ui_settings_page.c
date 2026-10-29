@@ -21,14 +21,13 @@ static lv_obj_t *s_root = NULL;
 static lv_obj_t *s_body = NULL;
 static ui_status_bar_t s_status = {0};
 static lv_obj_t *s_dark_mode_sw = NULL;
-static lv_obj_t *s_usb_status_lbl = NULL;
 static lv_obj_t *s_split_val_lbl = NULL;
 static lv_obj_t *s_sensors_val_lbl = NULL;
 static lv_obj_t *s_datetime_lbl = NULL;
 static lv_timer_t *s_datetime_timer = NULL;
 
 // Default split is 1000m until changed
-//static uint32_t s_current_split_m = 1000;
+static uint32_t s_current_split_m = 1000;
 static ui_split_length_cb_t s_split_cb = NULL;
 
 /* Dialog Handles */
@@ -327,12 +326,6 @@ static void sw_dark_mode_event_cb(lv_event_t *e)
     nvs_helper_set_dark_mode(on);
 }
 
-static void usb_status_set(const char *msg)
-{
-    if (s_usb_status_lbl)
-        lv_label_set_text(s_usb_status_lbl, msg ? msg : "");
-}
-
 static void sw_auto_rotate_event_cb(lv_event_t *e)
 {
     lv_obj_t *sw = lv_event_get_target_obj(e);
@@ -372,13 +365,6 @@ static void sw_auto_rotate_event_cb(lv_event_t *e)
         // Save as uint8_t
         nvs_helper_set_orientation((uint8_t)save_orient); //
     }
-}
-
-static void sw_metrics_lock_event_cb(lv_event_t *e)
-{
-    lv_obj_t *sw = lv_event_get_target_obj(e);
-    bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
-    nvs_helper_set_metrics_lock(on);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -423,7 +409,6 @@ void settings_page_create(lv_obj_t *parent)
 
     {
         lv_obj_t *session = section_group(s_body, "Session");
-        create_settings_row(session, "Lock metrics", sw_metrics_lock_event_cb, nvs_helper_get_metrics_lock(), true);
         s_split_val_lbl = create_clickable_row(session, "Split length", split_row_click_cb, false);
         update_split_label_text();
     }
@@ -432,33 +417,6 @@ void settings_page_create(lv_obj_t *parent)
         lv_obj_t *links = section_group(s_body, "Connections");
         s_sensors_val_lbl = create_clickable_row(links, "Sensors", sensors_row_click_cb, true);
 
-        lv_obj_t *usb = lv_obj_create(links);
-        lv_obj_set_height(usb, LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(usb, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_style_pad_row(usb, 2, 0);
-        group_row_chrome(usb, false);
-        lv_obj_set_style_pad_ver(usb, 6, 0);
-        lv_obj_clear_flag(usb, LV_OBJ_FLAG_CLICKABLE);
-
-        lv_obj_t *hdr = lv_obj_create(usb);
-        lv_obj_remove_style_all(hdr);
-        lv_obj_set_width(hdr, lv_pct(100));
-        lv_obj_set_height(hdr, 28);
-        lv_obj_set_flex_flow(hdr, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_clear_flag(hdr, LV_OBJ_FLAG_CLICKABLE);
-
-        lv_obj_t *lbl = lv_label_create(hdr);
-        lv_label_set_text(lbl, "USB export unavailable on ESP32-C3");
-        ui_theme_apply_label(lbl, false);
-        lv_obj_set_style_text_font(lbl, ui_font_caption(), 0);
-        lv_obj_set_flex_grow(lbl, 1);
-
-        s_usb_status_lbl = lv_label_create(usb);
-        ui_theme_apply_label(s_usb_status_lbl, true);
-        lv_obj_set_style_text_font(s_usb_status_lbl, ui_font_caption(), 0);
-        lv_label_set_text(s_usb_status_lbl, "");
-        usb_status_set("SD/SPI storage port required before activity export");
         update_sensors_label();
     }
 
@@ -487,7 +445,6 @@ void settings_page_apply_theme(void)
     if (s_datetime_lbl)
         ui_theme_apply_label(s_datetime_lbl, true);
     settings_page_set_dark_mode_state(ui_get_dark_mode());
-    settings_page_sync_usb_state();
     settings_page_sync_sensors_state();
 }
 
@@ -514,13 +471,6 @@ void settings_page_on_orientation_changed(void)
 void settings_page_open_split_dialog(void)
 {
     create_split_dialog();
-}
-
-void settings_page_sync_usb_state(void)
-{
-    if (!s_usb_status_lbl)
-        return;
-    usb_status_set("USB MSC unavailable; SD/SPI storage port required for export");
 }
 
 void settings_page_sync_sensors_state(void)

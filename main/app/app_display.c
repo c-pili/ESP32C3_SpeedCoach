@@ -15,7 +15,7 @@ void init_display_and_lvgl(void)
 
     ESP_LOGI(TAG, "Init LVGL port...");
     lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    lvgl_cfg.task_stack = 12288; /* 12 KB — default 7 KB overflows on lazy interval setup page creation */
+    lvgl_cfg.task_stack = 12288; /* Sharp 400x240 UI plus status and history pages. */
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
 
     ESP_LOGI(TAG, "Add LVGL display with RGB565-to-monochrome flush...");

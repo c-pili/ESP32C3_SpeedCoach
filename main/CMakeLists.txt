@@ -10,8 +10,6 @@ idf_component_register(
         "app/app_time.c"
         "ui/core/ui_core.c"
         "ui/core/ui_core_state.c"
-        "ui/core/ui_dialogs.c"
-        "ui/core/ui_gestures.c"
         "ui/core/ui_layout.c"
         "ui/core/ui_pages.c"
         "ui/core/ui_typography.c"
@@ -24,14 +22,7 @@ idf_component_register(
         "ui/menu/ui_menu_page.c"
         "ui/activity_summary/ui_activity_summary_page.c"
         "ui/activity_summary/ui_activity_detail_page.c"
-        "ui/interval/ui_interval_setup_page.c"
-        "ui/interval/ui_interval_data_page.c"
-        "ui/interval/ui_step_setup_page.c"
-        "ui/race/ui_race_setup_page.c"
-        "ui/race/ui_race_data_page.c"
         "ui/sensors/ui_sensors_page.c"
-        "interval_program/interval_program.c"
-        "race_program/race_program.c"
         "ui/fonts/lv_font_fa_solid_28.c"
         "ui/fonts/lv_font_num_56.c"
         "ui/fonts/lv_font_num_32.c"
@@ -43,20 +34,15 @@ idf_component_register(
         "ui/core"
         "ui/activity_summary"
         "ui/data"
-        "ui/interval"
-        "ui/race"
         "ui/sensors"
         "ui/menu"
         "ui/settings"
-        "interval_program"
-        "race_program"
     REQUIRES
         lcd_sharp_ls027
         esp_lvgl_port
         i2c_helper
         mpu6050
         stroke_detection
-        sd_mmc_helper
         rtc_pcf85063
         pwr_key
         battery_drv

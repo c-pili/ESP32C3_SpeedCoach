@@ -8,45 +8,32 @@
 #include "activity_log.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "interval_program.h"
 #include "nvs_helper.h"
-#include "race_program.h"
 #include "ui.h"
 #include "ui_data_page.h"
-#include "ui_interval_data_page.h"
-#include "ui_race_data_page.h"
 #include <stdio.h>
-#include <string.h>
 #include <time.h>
 
-static const char *TAG = "app";
-
-static const char *interval_unit_to_str(interval_unit_t unit)
+static bool start_activity_log(uint32_t id)
 {
-    switch (unit)
-    {
-    case INTERVAL_UNIT_TIME:
-        return "s";
-    case INTERVAL_UNIT_DISTANCE:
-        return "m";
-    case INTERVAL_UNIT_STROKES:
-        return "st";
-    default:
-        return "";
-    }
-}
+    esp_err_t err = s_storage.mounted
+        ? activity_log_start(&s_act_log, &s_storage, s_activity.start_ts, id)
+        : ESP_ERR_INVALID_STATE;
+    if (err == ESP_OK)
+        return true;
 
-static void fill_interval_log_cfg(activity_log_interval_cfg_t *out, const interval_config_t *cfg)
-{
-    if (!out || !cfg)
-        return;
-    memset(out, 0, sizeof(*out));
-    out->work_value = cfg->work.value;
-    strncpy(out->work_unit, interval_unit_to_str(cfg->work.unit), sizeof(out->work_unit) - 1);
-    out->rest_value = cfg->rest.value;
-    strncpy(out->rest_unit, interval_unit_to_str(cfg->rest.unit), sizeof(out->rest_unit) - 1);
-    out->rounds = cfg->rounds;
-    out->auto_advance = cfg->auto_advance;
+    ESP_LOGE("ACT", "activity %lu not started: storage/logger error %s",
+             (unsigned long)id, esp_err_to_name(err));
+    if (s_activity_mutex)
+        xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
+    s_activity_recording = false;
+    s_session_last_us = 0;
+    activity_stop(&s_activity, time(NULL));
+    if (s_activity_mutex)
+        xSemaphoreGive(s_activity_mutex);
+    (void)wifi_export_start();
+    data_page_show_activity_toast(false);
+    return false;
 }
 
 void activity_worker_task(void *arg)
@@ -63,169 +50,41 @@ void activity_worker_task(void *arg)
         if (s_activity_mutex)
             xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
 
+        if (cmd == ACT_CMD_START && !s_storage.mounted) {
+            if (s_activity_mutex)
+                xSemaphoreGive(s_activity_mutex);
+            ESP_LOGE("ACT", "activity start rejected: flash storage is not mounted");
+            data_page_show_activity_toast(false);
+            continue;
+        }
+
         if (cmd == ACT_CMD_START)
         {
             (void)wifi_export_stop();
             s_activity_recording = true;
             s_session_time_s = 0.0f;
             s_session_last_us = esp_timer_get_time();
-            s_interval_done_queued = false;
             app_imu_request_session_reset();
-            if (nvs_helper_get_metrics_lock()) {
-                ui_set_touch_lock(true);
-            }
 
             uint32_t id = nvs_helper_get_next_activity_id();
             activity_init(&s_activity, id);
             activity_start(&s_activity, time(NULL));
-            activity_set_type(&s_activity, ACTIVITY_NORMAL);
-
-            activity_log_set_interval_config(&s_act_log, NULL);
             activity_log_set_split_interval(&s_act_log, s_current_split_m);
             s_last_session_stroke_count = 0;
 
             if (s_activity_mutex)
                 xSemaphoreGive(s_activity_mutex);
 
-            ui_set_interval_data_visible(false);
-            ui_set_race_data_visible(false);
-            if (s_sd.mounted)
-                activity_log_start(&s_act_log, &s_sd, s_activity.start_ts, id, ACTIVITY_NORMAL);
+            if (!start_activity_log(id))
+                continue;
 
             data_page_show_activity_toast(true);
             ESP_LOGI("ACT", "START id=%lu", (unsigned long)id);
             continue;
         }
 
-        if (cmd == ACT_CMD_START_INTERVAL_NORMAL)
-        {
-            (void)wifi_export_stop();
-            s_activity_recording = true;
-            s_session_time_s = 0.0f;
-            s_session_last_us = esp_timer_get_time();
-            s_interval_done_queued = false;
-            app_imu_request_session_reset();
-            if (nvs_helper_get_metrics_lock()) {
-                ui_set_touch_lock(true);
-            }
-
-            uint32_t id = nvs_helper_get_next_activity_id();
-            activity_init(&s_activity, id);
-            activity_start(&s_activity, time(NULL));
-            activity_set_type(&s_activity, ACTIVITY_INTERVAL_NORMAL);
-            (void)resolve_interval_split_m();
-            activity_log_set_split_interval(&s_act_log, s_current_split_m);
-
-            interval_config_t cfg = {0};
-            interval_program_get_config(&cfg);
-            activity_log_interval_cfg_t log_cfg = {0};
-            fill_interval_log_cfg(&log_cfg, &cfg);
-            activity_log_set_interval_config(&s_act_log, &log_cfg);
-            s_last_session_stroke_count = 0;
-
-            if (s_activity_mutex)
-                xSemaphoreGive(s_activity_mutex);
-
-            ui_set_interval_data_visible(true);
-            interval_data_page_hide_start_prompt();
-            ui_set_race_data_visible(false);
-            ui_go_to_page(UI_INTERVAL_DATA_PAGE, false);
-            if (s_sd.mounted)
-                activity_log_start(&s_act_log, &s_sd, s_activity.start_ts, id, ACTIVITY_INTERVAL_NORMAL);
-            interval_program_start();
-            data_page_show_activity_toast(true);
-            ESP_LOGI("ACT", "START_INTERVAL id=%lu", (unsigned long)id);
-            continue;
-        }
-
-        if (cmd == ACT_CMD_START_INTERVAL_STEP)
-        {
-            (void)wifi_export_stop();
-            s_activity_recording = true;
-            s_session_time_s = 0.0f;
-            s_session_last_us = esp_timer_get_time();
-            s_interval_done_queued = false;
-            app_imu_request_session_reset();
-            if (nvs_helper_get_metrics_lock()) {
-                ui_set_touch_lock(true);
-            }
-
-            uint32_t id = nvs_helper_get_next_activity_id();
-            activity_init(&s_activity, id);
-            activity_start(&s_activity, time(NULL));
-            activity_set_type(&s_activity, ACTIVITY_INTERVAL_STEP);
-            (void)resolve_interval_split_m();
-            activity_log_set_split_interval(&s_act_log, s_current_split_m);
-
-            interval_config_t cfg = {0};
-            interval_program_get_config(&cfg);
-            activity_log_interval_cfg_t log_cfg = {0};
-            fill_interval_log_cfg(&log_cfg, &cfg);
-            activity_log_set_interval_config(&s_act_log, &log_cfg);
-            s_last_session_stroke_count = 0;
-
-            if (s_activity_mutex)
-                xSemaphoreGive(s_activity_mutex);
-
-            ui_set_interval_data_visible(true);
-            interval_data_page_hide_start_prompt();
-            ui_go_to_page(UI_INTERVAL_DATA_PAGE, false);
-            if (s_sd.mounted)
-                activity_log_start(&s_act_log, &s_sd, s_activity.start_ts, id, ACTIVITY_INTERVAL_STEP);
-            interval_program_start();
-            data_page_show_activity_toast(true);
-            ESP_LOGI("ACT", "START_STEP id=%lu", (unsigned long)id);
-            continue;
-        }
-
-        if (cmd == ACT_CMD_START_RACE)
-        {
-            (void)wifi_export_stop();
-            s_activity_recording = true;
-            s_session_time_s = 0.0f;
-            s_session_last_us = esp_timer_get_time();
-            s_interval_done_queued = false;
-            app_imu_request_session_reset();
-            if (nvs_helper_get_metrics_lock()) {
-                ui_set_touch_lock(true);
-            }
-
-            uint32_t id = nvs_helper_get_next_activity_id();
-            activity_init(&s_activity, id);
-            activity_start(&s_activity, time(NULL));
-            activity_set_type(&s_activity, ACTIVITY_RACE);
-            activity_log_set_interval_config(&s_act_log, NULL);
-            activity_log_set_split_interval(&s_act_log, s_current_split_m);
-            s_last_session_stroke_count = 0;
-
-            if (s_activity_mutex)
-                xSemaphoreGive(s_activity_mutex);
-
-            ui_set_interval_data_visible(false);
-            ui_set_race_data_visible(true);
-            race_data_page_hide_start_prompt();
-            ui_go_to_page(UI_RACE_DATA_PAGE, false);
-            if (s_sd.mounted)
-                activity_log_start(&s_act_log, &s_sd, s_activity.start_ts, id, ACTIVITY_RACE);
-            race_program_start();
-            data_page_show_activity_toast(true);
-            ESP_LOGI("ACT", "START_RACE id=%lu", (unsigned long)id);
-            continue;
-        }
-
         if (cmd == ACT_CMD_STOP_SAVE)
         {
-            ui_set_interval_data_visible(false);
-            ui_set_race_data_visible(false);
-            interval_data_page_hide_start_prompt();
-            race_data_page_hide_start_prompt();
-            if (ui_get_current_page() == UI_RACE_DATA_PAGE)
-                ui_go_to_page(UI_PAGE_DATA, false);
-            interval_program_stop();
-            race_program_stop();
-            s_interval_done_queued = false;
-            ui_set_touch_lock(false);
-
             if (s_session_last_us > 0) {
                 int64_t elapsed_us = esp_timer_get_time() - s_session_last_us;
                 if (elapsed_us < 0)
@@ -254,10 +113,7 @@ void activity_worker_task(void *arg)
                 activity_log_msg_t pending;
                 while (s_log_q && xQueueReceive(s_log_q, &pending, 0) == pdTRUE)
                 {
-                    if (pending.kind == ACT_LOG_ROW_STROKE)
-                        activity_log_append(&s_act_log, &pending.data.stroke);
-                    else if (pending.kind == ACT_LOG_ROW_INTERVAL)
-                        activity_log_append_interval(&s_act_log, &pending.data.interval);
+                    activity_log_append(&s_act_log, &pending.row);
                 }
 
                 float dist_m = snapshot.distance_m;
@@ -296,7 +152,7 @@ void activity_worker_task(void *arg)
             }
 
             // STOP THE LOGGER: This flushes and closes the CSV file.
-            // The file is now complete and saved on the SD card.
+            // The file is now complete and saved to flash storage.
             activity_log_stop(&s_act_log);
 
             FILE *f = fopen(ACTIVITY_INDEX_PATH, "a");
@@ -309,18 +165,13 @@ void activity_worker_task(void *arg)
                     avg_pace_s_per500 = 500.0f / snapshot.avg_speed_mps; // seconds per 500m
                 }
 
-                // IMPORTANT: store the base path (no _Splits/_Strokes suffix)
-                // In your activity_log.c you build: "activities/<base_name>"
-                // Use the field you actually have in activity_log_t:
-                //   - if it's log->filename_base use that
-                //   - if it's log->rel_path rename accordingly
                 fprintf(f, "%lu,%ld,%lu,%.2f,%.2f,%s\n",
                         (unsigned long)snapshot.id,
                         (long)snapshot.start_ts,
                         (unsigned long)duration_s,
                         (double)snapshot.distance_m,
                         (double)avg_pace_s_per500,
-                        s_act_log.filename_base /* or s_act_log.rel_path */);
+                        s_act_log.filename_base);
 
                 fclose(f);
             }
@@ -328,10 +179,8 @@ void activity_worker_task(void *arg)
             // Publish the stopped state only after the activity data and
             // index have been flushed, so a power-off request can wait safely.
             s_activity_recording = false;
-            if (s_sd.mounted) {
-                esp_err_t ap_err = wifi_export_start();
-                if (ap_err != ESP_OK) ESP_LOGE("ACT", "Wi-Fi export AP restart failed: %s", esp_err_to_name(ap_err));
-            }
+            esp_err_t ap_err = wifi_export_start();
+            if (ap_err != ESP_OK) ESP_LOGE("ACT", "Wi-Fi export AP restart failed: %s", esp_err_to_name(ap_err));
         }
     }
 }
@@ -343,11 +192,6 @@ esp_err_t app_activity_post_cmd(act_cmd_t cmd)
     if (xQueueSend(s_act_q, &cmd, 0) != pdTRUE)
         return ESP_ERR_TIMEOUT;
     return ESP_OK;
-}
-
-void on_stop_save_confirmed(void)
-{
-    (void)app_activity_post_cmd(ACT_CMD_STOP_SAVE);
 }
 
 void activity_logger_task(void *arg)
@@ -362,35 +206,8 @@ void activity_logger_task(void *arg)
             // Only append if file is open
             if (s_act_log.opened)
             {
-                if (msg.kind == ACT_LOG_ROW_STROKE)
-                {
-                    activity_log_append(&s_act_log, &msg.data.stroke);
-                }
-                else if (msg.kind == ACT_LOG_ROW_INTERVAL)
-                {
-                    activity_log_append_interval(&s_act_log, &msg.data.interval);
-                }
+                activity_log_append(&s_act_log, &msg.row);
             }
         }
     }
-}
-
-void on_split_interval_changed(uint32_t length_m)
-{
-    ESP_LOGI(TAG, "UI Callback: Split Interval changed to %lu meters", length_m);
-
-    // Update the logger configuration immediately
-    s_current_split_m = length_m;
-    activity_log_set_split_interval(&s_act_log, length_m);
-}
-
-uint32_t resolve_interval_split_m(void)
-{
-    interval_config_t cfg = {0};
-    interval_program_get_config(&cfg);
-
-    if (cfg.work.unit == INTERVAL_UNIT_DISTANCE && cfg.work.value > 0)
-        return cfg.work.value;
-
-    return s_current_split_m;
 }

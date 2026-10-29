@@ -6,8 +6,6 @@ void activity_init(activity_t *a, uint32_t id) {
     memset(a, 0, sizeof(*a));
     a->id = id;
     a->state = ACTIVITY_STATE_IDLE;
-    a->activity_type = ACTIVITY_NORMAL;
-    a->is_interval = false;
 }
 
 esp_err_t activity_start(activity_t *a, time_t start_ts) {

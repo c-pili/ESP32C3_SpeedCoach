@@ -1,6 +1,6 @@
 #include "app_context.h"
 
-sd_mmc_helper_t s_sd;
+activity_storage_t s_storage;
 QueueHandle_t s_act_q = NULL;
 TaskHandle_t s_act_worker_task = NULL;
 volatile bool s_activity_recording = false;
@@ -16,7 +16,6 @@ SemaphoreHandle_t s_activity_mutex = NULL;
 QueueHandle_t s_log_q = NULL;
 activity_log_t s_act_log;
 uint32_t s_current_split_m = 1000;
-bool s_interval_done_queued = false;
 
 lv_disp_t *s_disp = NULL;
 

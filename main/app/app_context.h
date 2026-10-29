@@ -10,11 +10,11 @@
 #include "i2c_helper.h"
 #include "lvgl.h"
 #include "mpu6050.h"
-#include "sd_mmc_helper.h"
+#include "storage_paths.h"
 #include "stroke_detection.h"
 #include "ui.h"
 
-extern sd_mmc_helper_t s_sd;
+extern activity_storage_t s_storage;
 extern QueueHandle_t s_act_q;
 extern TaskHandle_t s_act_worker_task;
 extern volatile bool s_activity_recording;
@@ -28,7 +28,6 @@ extern SemaphoreHandle_t s_activity_mutex;
 extern QueueHandle_t s_log_q;
 extern activity_log_t s_act_log;
 extern uint32_t s_current_split_m;
-extern bool s_interval_done_queued;
 
 extern lv_disp_t *s_disp;
 

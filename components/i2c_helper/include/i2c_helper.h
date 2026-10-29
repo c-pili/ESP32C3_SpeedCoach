@@ -17,7 +17,7 @@ esp_err_t i2c_helper_init(i2c_helper_t *ctx,
                           int scl_gpio,
                           uint32_t clk_hz);
 
-// Add a device (e.g. QMI8658) to the bus
+// Add a device (e.g. MPU6050) to the bus
 esp_err_t i2c_helper_add_device(i2c_helper_t *ctx,
                                 uint8_t addr_7bit,
                                 i2c_master_dev_handle_t *out_dev);

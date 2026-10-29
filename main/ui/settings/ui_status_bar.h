@@ -30,7 +30,6 @@ typedef struct {
 
     lv_obj_t *batt_label;
     lv_obj_t *rec_dot;
-    lv_obj_t *lock_label;
     lv_obj_t *ble_label;
 
     ui_orientation_t orient;
@@ -39,7 +38,6 @@ typedef struct {
     uint8_t gps_bars_count;
     bool gps_stale;
     bool recording;
-    bool touch_locked;
     sensor_link_t sensor_link;
 } ui_status_bar_t;
 

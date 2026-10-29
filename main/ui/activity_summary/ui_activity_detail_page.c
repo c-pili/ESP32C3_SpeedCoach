@@ -17,7 +17,7 @@ static const char *TAG = "ui_act_detail";
 #define PAGE_ROWS 8
 
 static uint32_t s_act_id = 0;
-static char s_base_full[192] = {0}; // full base path WITHOUT suffix, e.g. "/sdcard/activities/20260104_2235_01"
+static char s_base_full[192] = {0}; // full base path WITHOUT suffix, e.g. "/spiffs/activities/20260104_2235_01"
 static size_t s_page_index = 0;
 static size_t s_total_rows = 0;
 static size_t s_page_row_count = 0;
@@ -42,7 +42,6 @@ typedef struct
     bool has_next;
     bool ok;
     bool retry_prev;
-    bool interval_activity;
     uint16_t avg_hr;
     activity_store_split_t rows[PAGE_ROWS + 1];
 } detail_load_result_t;
@@ -92,15 +91,12 @@ static void tbl_row_tint_cb(lv_event_t *e)
 #define SPLIT_COLS 4
 static const lv_coord_t s_col_w[SPLIT_COLS] = {24, 60, 74, 74}; // tweak to taste
 static const char *s_col_hdr[SPLIT_COLS] = {"#", "Dist", "Time", "Pace"};
-static const char *s_col_hdr_interval[SPLIT_COLS] = {"Rd", "Dist", "Time", "Pace"};
-
-static void set_header_labels(bool interval_mode)
+static void set_header_labels(void)
 {
-    const char *const *hdr = interval_mode ? s_col_hdr_interval : s_col_hdr;
     for (int c = 0; c < SPLIT_COLS; c++)
     {
         if (s_hdr_lbl[c])
-            lv_label_set_text(s_hdr_lbl[c], hdr[c]);
+            lv_label_set_text(s_hdr_lbl[c], s_col_hdr[c]);
     }
 }
 
@@ -150,13 +146,13 @@ static void normalize_base_full(const char *csv_path)
         return;
 
     // build full path first
-    if (strncmp(csv_path, SD_MOUNT "/", strlen(SD_MOUNT "/")) == 0)
+    if (strncmp(csv_path, STORAGE_MOUNT "/", strlen(STORAGE_MOUNT "/")) == 0)
     {
         strncpy(s_base_full, csv_path, sizeof(s_base_full) - 1);
     }
     else
     {
-        snprintf(s_base_full, sizeof(s_base_full), SD_MOUNT "/%s", csv_path);
+        snprintf(s_base_full, sizeof(s_base_full), STORAGE_MOUNT "/%s", csv_path);
     }
     trim_tail(s_base_full);
 
@@ -277,8 +273,7 @@ static void apply_loaded_rows(const activity_store_split_t *rows,
                               bool has_next,
                               bool ok,
                               bool total_known,
-                              size_t total_rows,
-                              bool interval_activity)
+                              size_t total_rows)
 {
     if (!s_tbl || !s_scroller)
         return;
@@ -296,22 +291,12 @@ static void apply_loaded_rows(const activity_store_split_t *rows,
     s_has_next = has_next;
     s_page_row_count = ok ? count : 0;
 
-    bool interval_mode = interval_activity;
-    if (count > 0)
-        interval_mode = rows[0].is_interval;
-    set_header_labels(interval_mode);
+    set_header_labels();
 
     if (!ok || count == 0)
     {
         lv_table_set_row_cnt(s_tbl, 0);
-        if (interval_mode)
-        {
-            show_hint("No intervals yet.\nComplete a work/rest phase to log.");
-        }
-        else
-        {
-            show_hint("No splits in this file.");
-        }
+        show_hint("No splits in this file.");
         update_nav_controls();
         return;
     }
@@ -328,10 +313,7 @@ static void apply_loaded_rows(const activity_store_split_t *rows,
     for (size_t i = 0; i < count; i++)
     {
         char c0[12], c1[16], c2[16];
-        if (rows[i].is_interval && rows[i].label[0])
-            snprintf(c0, sizeof(c0), "%s", rows[i].label);
-        else
-            snprintf(c0, sizeof(c0), "%lu", (unsigned long)rows[i].split_index);
+        snprintf(c0, sizeof(c0), "%lu", (unsigned long)rows[i].split_index);
         activity_store_format_dist(c1, sizeof(c1), rows[i].split_dist_m);
         format_split_time(c2, sizeof(c2), rows[i].split_time_str);
 
@@ -378,8 +360,7 @@ static void apply_load_result_async(void *p)
                       res->has_next,
                       res->ok,
                       res->total_known,
-                      res->total_rows,
-                      res->interval_activity);
+                      res->total_rows);
     if (s_name_lbl && lv_obj_is_valid(s_name_lbl)) {
         char title[48];
         char buf[64];
@@ -443,7 +424,6 @@ static void detail_load_task(void *arg)
                 res->total_known = true;
                 res->total_rows = total;
             }
-            res->interval_activity = summary.is_interval;
             res->avg_hr = summary.avg_hr;
         }
 
@@ -526,8 +506,7 @@ static void refresh_detail(void)
                       has_next,
                       (r == ESP_OK && count > 0),
                       false,
-                      0,
-                      summary.is_interval);
+                      0);
 }
 
 static void request_load(void)

@@ -4,20 +4,13 @@
 #include "coach_ui_snapshot.h"
 #include "esp_lvgl_port.h"
 #include "esp_timer.h"
-#include "interval_program/interval_program.h"
 #include "lcd_sharp_ls027.h"
 #include "nvs_helper.h"
-#include "race_program/race_program.h"
 #include "ui_activity_detail_page.h"
 #include "ui_activity_summary_page.h"
 #include "ui_data_page.h"
-#include "ui_interval_data_page.h"
-#include "ui_interval_setup_page.h"
 #include "ui_menu_page.h"
-#include "ui_race_data_page.h"
-#include "ui_race_setup_page.h"
 #include "ui_settings_page.h"
-#include "ui_step_setup_page.h"
 #include "ui_sensors_page.h"
 #include "ui_theme.h"
 
@@ -89,8 +82,6 @@ static void coach_ui_tick(lv_timer_t *t)
         s_applied_once = true;
         s_applied_seq = snap.seq;
         data_page_apply_snapshot(&snap);
-        interval_data_page_apply_snapshot(&snap);
-        race_data_page_apply_snapshot(&snap);
         ui_status_bar_apply_snapshot(&snap);
     } else {
         data_page_set_time_s(snap.time_s);
@@ -122,55 +113,8 @@ bool ui_is_landscape(void)
            lv_display_get_vertical_resolution(ui_s_disp);
 }
 
-void ui_register_stop_save_confirm_cb(ui_stop_save_confirm_cb_t cb) { ui_s_stop_save_confirm_cb = cb; }
-void ui_register_shutdown_confirm_cb(ui_shutdown_confirm_cb_t cb) { ui_s_shutdown_confirm_cb = cb; }
 void ui_register_dark_mode_cb(ui_dark_mode_cb_t cb) { ui_s_dark_mode_cb = cb; }
 void ui_register_auto_rotate_cb(ui_auto_rotate_cb_t cb) { ui_s_auto_rotate_cb = cb; }
-
-void ui_set_interval_start_armed(bool armed) { ui_s_interval_start_armed = armed; }
-bool ui_take_interval_start_armed(void)
-{
-    bool armed = ui_s_interval_start_armed;
-    ui_s_interval_start_armed = false;
-    return armed;
-}
-
-void ui_set_interval_data_visible(bool visible)
-{
-    ui_s_interval_data_visible = visible;
-
-    if (!visible && ui_s_current_page == UI_INTERVAL_DATA_PAGE)
-    {
-        ui_go_to_page(UI_PAGE_DATA, true);
-    }
-}
-
-void ui_set_race_start_armed(bool armed) { ui_s_race_start_armed = armed; }
-bool ui_take_race_start_armed(void)
-{
-    bool armed = ui_s_race_start_armed;
-    ui_s_race_start_armed = false;
-    return armed;
-}
-
-void ui_set_race_data_visible(bool visible)
-{
-    ui_s_race_data_visible = visible;
-
-    if (!visible && ui_s_current_page == UI_RACE_DATA_PAGE)
-    {
-        /* ui_go_to_page has no animated RACE_DATA -> DATA path; instant relayout. */
-        ui_go_to_page(UI_PAGE_DATA, false);
-    }
-}
-
-void ui_set_step_start_armed(bool armed) { ui_s_step_start_armed = armed; }
-bool ui_take_step_start_armed(void)
-{
-    bool armed = ui_s_step_start_armed;
-    ui_s_step_start_armed = false;
-    return armed;
-}
 
 void ui_notify_dark_mode_changed(bool enabled)
 {
@@ -196,11 +140,6 @@ void ui_set_dark_mode(bool enabled)
     menu_page_apply_theme();
     activity_summary_page_apply_theme();
     activity_detail_page_apply_theme();
-    interval_setup_page_apply_theme();
-    interval_data_page_apply_theme();
-    race_setup_page_apply_theme();
-    race_data_page_apply_theme();
-    step_setup_page_apply_theme();
     sensors_page_apply_theme();
     if (ui_status_bar_root(&ui_s_live_status)) {
         ui_status_bar_apply_theme(&ui_s_live_status);
@@ -213,26 +152,6 @@ bool ui_get_dark_mode(void) { return ui_s_dark_mode; }
 ui_page_t ui_get_current_page(void)
 {
     return ui_s_current_page;
-}
-
-bool ui_is_modal_active(void)
-{
-    return ui_s_modal_active;
-}
-
-void ui_set_touch_lock(bool locked)
-{
-    ui_s_touch_locked = locked;
-}
-
-bool ui_is_touch_lock(void)
-{
-    return ui_s_touch_locked;
-}
-
-void ui_toggle_touch_lock(void)
-{
-    ui_s_touch_locked = !ui_s_touch_locked;
 }
 
 void ui_set_brightness_percent(uint8_t percent)
@@ -304,8 +223,6 @@ void ui_init(lv_disp_t *disp)
     lvgl_port_lock(0);
     ui_theme_init(ui_s_disp);
     create_pages_ui();
-    interval_program_init();
-    race_program_init();
     lv_timer_create(coach_ui_tick, 100, NULL);
     lvgl_port_unlock();
 }

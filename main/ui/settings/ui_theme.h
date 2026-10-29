@@ -12,8 +12,6 @@ typedef struct {
     lv_color_t border;
     lv_color_t accent;
     lv_color_t accent_text;
-    lv_color_t work;
-    lv_color_t rest;
     lv_color_t alert;
     lv_color_t rec;
 } ui_theme_palette_t;
@@ -46,8 +44,6 @@ void ui_theme_apply_tile(lv_obj_t *obj);
 /** One rounded card. Rows inside supply their own dividers. */
 void ui_theme_apply_list_group(lv_obj_t *obj);
 
-lv_color_t ui_theme_color_work(void);
-lv_color_t ui_theme_color_rest(void);
 lv_color_t ui_theme_color_alert(void);
 lv_color_t ui_theme_color_rec(void);
 lv_color_t ui_theme_color_accent(void);

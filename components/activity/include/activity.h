@@ -5,7 +5,6 @@
 #include <time.h>
 
 #include "esp_err.h"
-#include "sd_mmc_helper.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,13 +17,6 @@ typedef enum {
 } activity_state_t;
 
 
-typedef enum{
-    ACTIVITY_NORMAL = 0,
-    ACTIVITY_INTERVAL_NORMAL,
-    ACTIVITY_INTERVAL_STEP,
-    ACTIVITY_RACE
-} activity_type_t;
-
 
 
 /**
@@ -36,7 +28,6 @@ typedef struct {
     uint32_t id;
 
     //Type / Mode
-    activity_type_t activity_type;
 
     // Time
     time_t   start_ts;        // epoch seconds
@@ -69,7 +60,6 @@ typedef struct {
     double   total_dt;        // seconds
 
     // Mode
-    bool     is_interval;     // true when started from interval setup
 } activity_t;
 
 /**
@@ -117,15 +107,6 @@ static inline bool activity_is_recording(const activity_t *a) {
     return a && a->state == ACTIVITY_STATE_RECORDING;
 }
 
-static inline bool activity_type_is_interval(activity_type_t t) {
-    return (t == ACTIVITY_INTERVAL_NORMAL) || (t == ACTIVITY_INTERVAL_STEP);
-}
-
-static inline void activity_set_type(activity_t *a, activity_type_t t) {
-    if (!a) return;
-    a->activity_type = t;
-    a->is_interval = activity_type_is_interval(t);
-}
 
 #ifdef __cplusplus
 }

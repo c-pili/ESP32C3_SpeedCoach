@@ -32,8 +32,6 @@ void nvs_helper_set_orientation(uint8_t orient);
 /* Live-screen metric slots (0..2). Values are data_metric_t stored as u8. */
 void nvs_helper_get_data_metrics(uint8_t out[3]);
 void nvs_helper_set_data_metrics(const uint8_t in[3]);
-bool nvs_helper_get_metrics_lock(void);     /* Default: true (lock while recording) */
-void nvs_helper_set_metrics_lock(bool enabled);
 
 uint8_t nvs_helper_get_brightness(void);    /* Default: 80 percent */
 void nvs_helper_set_brightness(uint8_t percent);

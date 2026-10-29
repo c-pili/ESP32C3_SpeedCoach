@@ -24,23 +24,6 @@ static void format_timestamp(time_t ts, char *buf, size_t len)
     strftime(buf, len, "%Y-%m-%d %H:%M:%S", &tm_info);
 }
 
-const char* get_activity_string_fast(activity_type_t type) {
-    // defined purely for clarity; ideally usually placed in a header or static scope
-    static const char* const activity_map[] = {
-        [ACTIVITY_NORMAL]          = "Normal",
-        [ACTIVITY_INTERVAL_NORMAL] = "Intervals - Rounds",
-        [ACTIVITY_INTERVAL_STEP]   = "Intervals - Steps",
-        [ACTIVITY_RACE]            = "Race"
-    };
-
-    // Safety check to prevent crashing on invalid input
-    if (type < 0 || type >= (sizeof(activity_map) / sizeof(activity_map[0]))) {
-        return "Unknown";
-    }
-
-    return activity_map[type];
-}
-
 static void fmt_session_time_ms(float total_sec, char *out, size_t len)
 {
     if (total_sec < 0)
@@ -206,28 +189,24 @@ void activity_log_set_split_interval(activity_log_t *log, uint32_t interval_m)
     }
 }
 
-esp_err_t activity_log_start(activity_log_t *log, sd_mmc_helper_t *sd, time_t start_ts, uint32_t activity_id, activity_type_t act_type)
+esp_err_t activity_log_start(activity_log_t *log, const activity_storage_t *storage, time_t start_ts, uint32_t activity_id)
 {
-    if (!log || !sd || !sd->mounted)
+    if (!log || !storage || !storage->mounted || !storage->mount_point)
         return ESP_ERR_INVALID_STATE;
 
     float cached_interval = log->split_interval_m;
-    activity_log_interval_cfg_t cached_interval_cfg = log->interval_cfg;
-    bool cached_interval_cfg_valid = log->interval_cfg_valid;
-    bool is_interval = activity_type_is_interval(act_type);
-
     activity_log_init(log);
 
     log->split_interval_m = (cached_interval > 0.1f) ? cached_interval : 1000.0f;
-    log->interval_cfg = cached_interval_cfg;
-    log->interval_cfg_valid = cached_interval_cfg_valid;
     log->next_split_index = 1;
-    log->activity_type = act_type;
 
     // 1. Create Directory
     char dir_full[128];
-    snprintf(dir_full, sizeof(dir_full), "%s/activities", sd->mount_point);
-    ensure_dir(dir_full);
+    snprintf(dir_full, sizeof(dir_full), "%s/activities", storage->mount_point);
+    if (ensure_dir(dir_full) != ESP_OK) {
+        ESP_LOGE(TAG, "cannot create activity directory: %s", dir_full);
+        return ESP_FAIL;
+    }
 
     // 2. Generate Base Name (activities/YYYYMMDD...)
     char base_name[64];
@@ -235,8 +214,11 @@ esp_err_t activity_log_start(activity_log_t *log, sd_mmc_helper_t *sd, time_t st
 
     // 3. Create per-activity directory
     char act_dir[160];
-    snprintf(act_dir, sizeof(act_dir), "%s/activities/%s", sd->mount_point, base_name);
-    ensure_dir(act_dir);
+    snprintf(act_dir, sizeof(act_dir), "%s/activities/%s", storage->mount_point, base_name);
+    if (ensure_dir(act_dir) != ESP_OK) {
+        ESP_LOGE(TAG, "cannot create session directory: %s", act_dir);
+        return ESP_FAIL;
+    }
 
     // Store relative path base for reference (used by index.csv)
     snprintf(log->filename_base, sizeof(log->filename_base), "activities/%s", base_name);
@@ -244,7 +226,7 @@ esp_err_t activity_log_start(activity_log_t *log, sd_mmc_helper_t *sd, time_t st
     // 4. Open Main Log File (.csv)
     char full_path_main[180];
     snprintf(full_path_main, sizeof(full_path_main), "%s/activities/%s/Strokes.csv",
-             sd->mount_point, base_name);
+             storage->mount_point, base_name);
 
     log->f_main = fopen(full_path_main, "w");
     if (!log->f_main)
@@ -255,20 +237,24 @@ esp_err_t activity_log_start(activity_log_t *log, sd_mmc_helper_t *sd, time_t st
 
     char full_path_tcx[180];
     snprintf(full_path_tcx, sizeof(full_path_tcx), "%s/activities/%s/Workout.tcx",
-             sd->mount_point, base_name);
+             storage->mount_point, base_name);
     log->f_tcx = fopen(full_path_tcx, "w");
-    if (log->f_tcx) {
-        struct tm utc_tm;
-        char start_iso[32];
-        gmtime_r(&start_ts, &utc_tm);
-        strftime(start_iso, sizeof(start_iso), "%Y-%m-%dT%H:%M:%SZ", &utc_tm);
-        tcx_write_header(log->f_tcx, start_iso, &log->tcx_duration_pos, &log->tcx_distance_pos);
+    if (!log->f_tcx) {
+        ESP_LOGE(TAG, "fopen TCX failed: %s", full_path_tcx);
+        fclose(log->f_main);
+        log->f_main = NULL;
+        return ESP_FAIL;
     }
+    struct tm utc_tm;
+    char start_iso[32];
+    gmtime_r(&start_ts, &utc_tm);
+    strftime(start_iso, sizeof(start_iso), "%Y-%m-%dT%H:%M:%SZ", &utc_tm);
+    tcx_write_header(log->f_tcx, start_iso, &log->tcx_duration_pos, &log->tcx_distance_pos);
 
     // 5. Open Splits Log File (_Splits.csv)
     char full_path_splits[180];
     snprintf(full_path_splits, sizeof(full_path_splits), "%s/activities/%s/Splits.csv",
-             sd->mount_point, base_name);
+             storage->mount_point, base_name);
 
     log->f_splits = fopen(full_path_splits, "w");
     if (!log->f_splits)
@@ -296,25 +282,8 @@ esp_err_t activity_log_start(activity_log_t *log, sd_mmc_helper_t *sd, time_t st
         // 2. Write Metadata Rows (Device Settings)
         fprintf(log->f_splits, "Device Info,ESP32-C3 Speed Coach\n");
         fprintf(log->f_splits, "Session Start,%s\n", time_str);
-        fprintf(log->f_splits, "Activity Type,%s\n",  get_activity_string_fast(log->activity_type));
-        if (is_interval)
-        {
-            if (log->interval_cfg_valid)
-            {
-                fprintf(log->f_splits, "Interval Work,%u %s\n",
-                        (unsigned)log->interval_cfg.work_value,
-                        log->interval_cfg.work_unit);
-                fprintf(log->f_splits, "Interval Rest,%u %s\n",
-                        (unsigned)log->interval_cfg.rest_value,
-                        log->interval_cfg.rest_unit);
-                fprintf(log->f_splits, "Rounds,%u\n", (unsigned)log->interval_cfg.rounds);
-                fprintf(log->f_splits, "Auto Advance,%u\n", log->interval_cfg.auto_advance ? 1U : 0U);
-            }
-        }
-        else
-        {
-            fprintf(log->f_splits, "Split Setting,%.0f meters\n", log->split_interval_m);
-        }
+        fprintf(log->f_splits, "Activity Type,Normal\n");
+        fprintf(log->f_splits, "Split Setting,%.0f meters\n", log->split_interval_m);
         fprintf(log->f_splits, "Activity ID,%u\n", (unsigned int)activity_id);
         {
             sensor_hub_slot_info_t hr = {0};
@@ -327,14 +296,7 @@ esp_err_t activity_log_start(activity_log_t *log, sd_mmc_helper_t *sd, time_t st
         fprintf(log->f_splits, "\n");
 
         // 4. Write the Actual Data Columns
-        if (is_interval)
-        {
-            fprintf(log->f_splits, "Round,Phase,Target,Unit,Phase Time,Phase Dist (m),Phase Pace (/500m),Avg SPM,Avg HR\n");
-        }
-        else
-        {
-            fprintf(log->f_splits, "Split #,Total Dist (m),Split Dist (m),Split Time,Avg Pace (/500m),Avg SPM,Avg HR\n");
-        }
+        fprintf(log->f_splits, "Split #,Total Dist (m),Split Dist (m),Split Time,Avg Pace (/500m),Avg SPM,Avg HR\n");
     }
 
     log->opened = true;
@@ -403,14 +365,11 @@ esp_err_t activity_log_append(activity_log_t *log, const activity_log_row_t *row
     log->last_row_time_s = row->session_time_s;
     log->last_row_stroke_count = row->stroke_count;
 
-    if (!activity_type_is_interval(log->activity_type))
-    {
-        activity_log_update_splits(log,
-                                   row->total_distance_m,
-                                   row->session_time_s,
-                                   row->spm_instant,
-                                   false);
-    }
+    activity_log_update_splits(log,
+                               row->total_distance_m,
+                               row->session_time_s,
+                               row->spm_instant,
+                               false);
     return ESP_OK;
 }
 
@@ -442,61 +401,12 @@ esp_err_t activity_log_append_split(activity_log_t *log, const activity_log_spli
     return ESP_OK;
 }
 
-void activity_log_set_interval_config(activity_log_t *log, const activity_log_interval_cfg_t *cfg)
-{
-    if (!log)
-        return;
-    if (!cfg)
-    {
-        log->interval_cfg_valid = false;
-        memset(&log->interval_cfg, 0, sizeof(log->interval_cfg));
-        return;
-    }
-    log->interval_cfg = *cfg;
-    log->interval_cfg_valid = true;
-}
-
-esp_err_t activity_log_append_interval(activity_log_t *log, const activity_log_interval_row_t *row)
-{
-    if (!log || !log->opened || !log->f_splits)
-        return ESP_ERR_INVALID_STATE;
-    if (!row)
-        return ESP_ERR_INVALID_ARG;
-
-    char phase_time_str[32];
-    fmt_session_time_ms(row->phase_time_s, phase_time_str, sizeof(phase_time_str));
-
-    char pace_str[24];
-    format_pace(row->phase_pace_s, pace_str, sizeof(pace_str));
-
-    char hr_str[8] = {0};
-    if (row->avg_hr > 0) {
-        snprintf(hr_str, sizeof(hr_str), "%u", (unsigned)row->avg_hr);
-    }
-    fprintf(log->f_splits, "%u,%s,%u,%s,%s,%.1f,%s,%.1f,%s\n",
-            (unsigned)row->round_index,
-            (row->phase[0] != 0) ? row->phase : "--",
-            (unsigned)row->target_value,
-            (row->target_unit[0] != 0) ? row->target_unit : "--",
-            phase_time_str,
-            (double)row->phase_distance_m,
-            pace_str,
-            (double)row->avg_spm,
-            hr_str);
-
-    fflush(log->f_splits);
-    return ESP_OK;
-}
-
 esp_err_t activity_log_finalize(activity_log_t *log, float final_distance_m, float final_time_s, float avg_spm)
 {
     if (!log || !log->opened)
         return ESP_ERR_INVALID_STATE;
 
-    if (!activity_type_is_interval(log->activity_type))
-    {
-        activity_log_update_splits(log, final_distance_m, final_time_s, avg_spm, true);
-    }
+    activity_log_update_splits(log, final_distance_m, final_time_s, avg_spm, true);
     if (log->f_tcx)
         tcx_set_summary(log->f_tcx, log->tcx_duration_pos, log->tcx_distance_pos,
                         final_distance_m, final_time_s);

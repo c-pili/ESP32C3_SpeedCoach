@@ -177,27 +177,6 @@ void nvs_helper_set_data_metrics(const uint8_t in[3])
     nvs_close(handle);
 }
 
-bool nvs_helper_get_metrics_lock(void)
-{
-    nvs_handle_t handle;
-    uint8_t val = 1;
-    if (open_storage(&handle, NVS_READONLY) == ESP_OK) {
-        nvs_get_u8(handle, "met_lock", &val);
-        nvs_close(handle);
-    }
-    return (val != 0);
-}
-
-void nvs_helper_set_metrics_lock(bool enabled)
-{
-    nvs_handle_t handle;
-    if (open_storage(&handle, NVS_READWRITE) == ESP_OK) {
-        nvs_set_u8(handle, "met_lock", enabled ? 1 : 0);
-        nvs_commit(handle);
-        nvs_close(handle);
-    }
-}
-
 uint8_t nvs_helper_get_brightness(void)
 {
     nvs_handle_t handle;

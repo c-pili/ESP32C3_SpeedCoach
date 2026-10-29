@@ -14,7 +14,7 @@ typedef struct battery_drv_s *battery_drv_handle_t;
 
 typedef struct {
     adc_unit_t unit;              // ADC_UNIT_1
-    adc_channel_t channel;        // e.g. ADC_CHANNEL_7 (GPIO8 on ESP32-S3)
+    adc_channel_t channel;
     adc_atten_t atten;            // ADC_ATTEN_DB_12
     adc_bitwidth_t bitwidth;      // ADC_BITWIDTH_DEFAULT
 

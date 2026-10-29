@@ -13,7 +13,6 @@
 #include "nvs_helper.h"
 #include "sensor_hub.h"
 #include "rtc_pcf85063.h"
-#include "sd_mmc_helper.h"
 #include "flash_storage.h"
 #include "wifi_export.h"
 
@@ -82,10 +81,10 @@ void app_main(void)
     };
     data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
 
-    esp_err_t sd_err = flash_storage_mount(&s_sd);
-    if (sd_err != ESP_OK)
+    esp_err_t storage_err = flash_storage_mount(&s_storage);
+    if (storage_err != ESP_OK)
     {
-        ESP_LOGW(TAG, "Flash activity storage mount failed: %s", esp_err_to_name(sd_err));
+        ESP_LOGW(TAG, "Flash activity storage mount failed: %s", esp_err_to_name(storage_err));
     }
     esp_err_t ap_err = wifi_export_start();
     if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
@@ -97,19 +96,16 @@ void app_main(void)
     ui_set_orientation(UI_ORIENT_LANDSCAPE_270);
     uint32_t saved_split = nvs_helper_get_split_len();
     s_current_split_m = saved_split;
-    activity_log_init(&s_act_log); // Ensure log is init'd before setting interval
+    activity_log_init(&s_act_log);
     activity_log_set_split_interval(&s_act_log, saved_split);
 
     ui_register_dark_mode_cb(on_dark_mode_setting_changed);
     ui_register_auto_rotate_cb(on_auto_rotate_setting_changed);
-    ui_register_shutdown_confirm_cb(on_shutdown_confirmed);
-    ui_register_stop_save_confirm_cb(on_stop_save_confirmed);
-    ui_settings_register_split_length_cb(on_split_interval_changed);
 
     app_pwr_key_setup();
 
     /* Created last, so it competes for whatever internal DRAM is left after
-     * LVGL/SD/BLE. A silent pdFAIL here kills SPM with no other symptom. */
+     * LVGL/BLE. A silent pdFAIL here kills SPM with no other symptom. */
     BaseType_t stroke_ok = xTaskCreatePinnedToCore(stroke_task, "stroke",
                                                    6144, NULL, 3, NULL, 0);
     if (stroke_ok != pdPASS)

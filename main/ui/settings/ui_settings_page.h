@@ -13,8 +13,6 @@ void settings_page_on_orientation_changed(void);
 
 /** Open the split-length picker from the menu (uses the settings overlay). */
 void settings_page_open_split_dialog(void);
-/** Keep the settings USB switch in sync after a menu toggle. */
-void settings_page_sync_usb_state(void);
 /** Keep the Sensors row in sync with tracker connection state. */
 void settings_page_sync_sensors_state(void);
 

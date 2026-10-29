@@ -8,11 +8,8 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "gps_neo_m8n.h"
-#include "interval_program.h"
 #include "math.h"
-#include "race_program.h"
 #include "ui.h"
-#include "ui_interval_data_page.h"
 #include "mpu6050.h"
 #include "sensor_hub.h"
 #include "stroke_detection.h"
@@ -21,20 +18,6 @@
 #include <string.h>
 
 static const char *TAG = "app";
-static uint32_t s_phase_hr_sum;
-static uint16_t s_phase_hr_n;
-
-static uint16_t take_phase_hr_avg(void)
-{
-    uint16_t avg = 0;
-    if (s_phase_hr_n > 0) {
-        avg = (uint16_t)(s_phase_hr_sum / s_phase_hr_n);
-    }
-    s_phase_hr_sum = 0;
-    s_phase_hr_n = 0;
-    return avg;
-}
-
 static sensor_link_t sensor_link_from_live(const sensor_hub_live_t *live)
 {
     if (live->hr_bpm > 0) {
@@ -59,56 +42,6 @@ static uint32_t s_ui_seq = 0;
 void app_imu_request_session_reset(void)
 {
     s_session_reset = true;
-}
-
-static const char *interval_unit_to_csv(interval_unit_t unit)
-{
-    switch (unit)
-    {
-    case INTERVAL_UNIT_TIME:
-        return "s";
-    case INTERVAL_UNIT_DISTANCE:
-        return "m";
-    case INTERVAL_UNIT_STROKES:
-        return "st";
-    default:
-        return "";
-    }
-}
-
-static const char *interval_phase_to_str(interval_phase_t phase)
-{
-    return (phase == INTERVAL_PHASE_WORK) ? "WORK" : "REST";
-}
-
-static void build_interval_row(activity_log_interval_row_t *row,
-                               interval_phase_t phase,
-                               uint16_t round_idx,
-                               const interval_target_t *target,
-                               float phase_time_s,
-                               float phase_dist_m,
-                               uint32_t phase_strokes)
-{
-    if (!row)
-        return;
-
-    if (phase_time_s < 0.0f)
-        phase_time_s = 0.0f;
-    if (phase_dist_m < 0.0f)
-        phase_dist_m = 0.0f;
-
-    memset(row, 0, sizeof(*row));
-    row->round_index = round_idx;
-    strncpy(row->phase, interval_phase_to_str(phase), sizeof(row->phase) - 1);
-    if (target)
-    {
-        row->target_value = target->value;
-        strncpy(row->target_unit, interval_unit_to_csv(target->unit), sizeof(row->target_unit) - 1);
-    }
-    row->phase_time_s = phase_time_s;
-    row->phase_distance_m = phase_dist_m;
-    row->phase_pace_s = (phase_dist_m > 0.1f) ? (phase_time_s / (phase_dist_m / 500.0f)) : 0.0f;
-    row->avg_spm = (phase_time_s > 0.1f) ? ((float)phase_strokes * 60.0f / phase_time_s) : 0.0f;
 }
 
 static ui_orientation_t decide_orientation_from_accel(float ax, float ay, float az)
@@ -182,15 +115,6 @@ void stroke_task(void *arg)
     static float s_last_split_pace = NAN;
     static float s_last_split_delta = NAN;
 
-    static bool s_interval_prev_recording = false;
-    static bool s_interval_phase_active = false;
-    static interval_phase_t s_interval_log_phase = INTERVAL_PHASE_IDLE;
-    static uint16_t s_interval_log_round = 0;
-    static float s_interval_phase_start_time_s = 0.0f;
-    static float s_interval_phase_start_dist_m = 0.0f;
-    static uint32_t s_interval_phase_start_strokes = 0;
-    static bool s_interval_cfg_valid = false;
-    static interval_config_t s_interval_log_cfg = {0};
 
     /* Must stay an exact multiple of the FreeRTOS tick (10 ms @ 100 Hz), or the
      * pacing delay truncates to 0 and the loop free-runs at the I2C rate while
@@ -385,10 +309,7 @@ void stroke_task(void *arg)
             // --- End Derived Metrics ---
 
             bool need_log = false;
-            bool need_interval_log = false;
-            bool interval_was_recording = s_interval_prev_recording;
             activity_log_row_t row = {0};
-            activity_log_interval_row_t interval_row = {0};
 
             if (s_activity_mutex)
                 xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
@@ -412,108 +333,6 @@ void stroke_task(void *arg)
                                 stroke_delta,
                                 gps_ok,
                                 (isfinite(s_last_valid_spm) && (t_s - s_last_spm_t_s) <= 12.0f));
-
-                bool is_interval = activity_type_is_interval(s_activity.activity_type);
-                if (is_interval && !interval_was_recording)
-                {
-                    interval_program_get_config(&s_interval_log_cfg);
-                    s_interval_cfg_valid = true;
-                    s_interval_phase_active = false;
-                    s_interval_log_phase = INTERVAL_PHASE_IDLE;
-                    s_interval_log_round = 0;
-                }
-
-                interval_ui_state_t ist = {0};
-                bool interval_ui_valid = false;
-                if (is_interval)
-                {
-                    uint32_t t_ms = (uint32_t)(s_session_time_s * 1000.0f);
-                    interval_program_update(true, t_ms, s_activity.distance_m, s_activity.stroke_count);
-                    interval_program_get_ui(&ist);
-                    interval_ui_valid = true;
-                    if (!s_interval_done_queued && ist.phase == INTERVAL_PHASE_DONE)
-                    {
-                        s_interval_done_queued = true;
-                        interval_data_page_show_complete_prompt();
-                        act_cmd_t done_cmd = ACT_CMD_STOP_SAVE;
-                        xQueueSend(s_act_q, &done_cmd, 0);
-                    }
-                }
-
-                race_ui_state_t rst = {0};
-                if (s_activity.activity_type == ACTIVITY_RACE)
-                {
-                    race_program_update(true, s_session_time_s, s_activity.distance_m, s_activity.avg_speed_mps);
-                    race_program_get_ui(&rst);
-                    if (!s_interval_done_queued && rst.finished)
-                    {
-                        s_interval_done_queued = true;
-                        act_cmd_t done_cmd = ACT_CMD_STOP_SAVE;
-                        xQueueSend(s_act_q, &done_cmd, 0);
-                    }
-                }
-
-                if (is_interval && interval_ui_valid)
-                {
-                    if (ist.phase == INTERVAL_PHASE_WORK || ist.phase == INTERVAL_PHASE_REST)
-                    {
-                        if (!s_interval_phase_active)
-                        {
-                            s_interval_phase_active = true;
-                            s_interval_log_phase = ist.phase;
-                            s_interval_log_round = ist.round_idx;
-                            s_interval_phase_start_time_s = s_session_time_s;
-                            s_interval_phase_start_dist_m = s_activity.distance_m;
-                            s_interval_phase_start_strokes = s_activity.stroke_count;
-                            s_phase_hr_sum = 0;
-                            s_phase_hr_n = 0;
-                        }
-                        else if (ist.phase != s_interval_log_phase || ist.round_idx != s_interval_log_round)
-                        {
-                            const interval_target_t *target = NULL;
-                            if (s_interval_cfg_valid)
-                            {
-                                target = (s_interval_log_phase == INTERVAL_PHASE_WORK) ? &s_interval_log_cfg.work : &s_interval_log_cfg.rest;
-                            }
-                            build_interval_row(&interval_row,
-                                               s_interval_log_phase,
-                                               s_interval_log_round,
-                                               target,
-                                               s_session_time_s - s_interval_phase_start_time_s,
-                                               s_activity.distance_m - s_interval_phase_start_dist_m,
-                                               s_activity.stroke_count - s_interval_phase_start_strokes);
-                            interval_row.avg_hr = take_phase_hr_avg();
-                            need_interval_log = true;
-
-                            s_interval_log_phase = ist.phase;
-                            s_interval_log_round = ist.round_idx;
-                            s_interval_phase_start_time_s = s_session_time_s;
-                            s_interval_phase_start_dist_m = s_activity.distance_m;
-                            s_interval_phase_start_strokes = s_activity.stroke_count;
-                        }
-                    }
-                    else if (s_interval_phase_active &&
-                             (ist.phase == INTERVAL_PHASE_DONE || ist.phase == INTERVAL_PHASE_IDLE))
-                    {
-                        const interval_target_t *target = NULL;
-                        if (s_interval_cfg_valid)
-                        {
-                            target = (s_interval_log_phase == INTERVAL_PHASE_WORK) ? &s_interval_log_cfg.work : &s_interval_log_cfg.rest;
-                        }
-                        build_interval_row(&interval_row,
-                                           s_interval_log_phase,
-                                           s_interval_log_round,
-                                           target,
-                                           s_session_time_s - s_interval_phase_start_time_s,
-                                           s_activity.distance_m - s_interval_phase_start_dist_m,
-                                           s_activity.stroke_count - s_interval_phase_start_strokes);
-                        interval_row.avg_hr = take_phase_hr_avg();
-                        need_interval_log = true;
-                        s_interval_phase_active = false;
-                        s_interval_log_phase = INTERVAL_PHASE_IDLE;
-                        s_interval_log_round = 0;
-                    }
-                }
 
                 // Calculate Avg Pace from Session Avg Speed
                 float avg_pace_s = (s_activity.avg_speed_mps > 0.1f) ? (500.0f / s_activity.avg_speed_mps) : 0.0f;
@@ -581,39 +400,10 @@ void stroke_task(void *arg)
                     row.pod_catch_deg = (float)live.pod_catch_ddeg / 10.0f;
                     row.pod_finish_deg = (float)live.pod_finish_ddeg / 10.0f;
                     row.pod_arc_deg = (float)live.pod_arc_ddeg / 10.0f;
-                    if (s_interval_phase_active && live.hr_bpm > 0) {
-                        s_phase_hr_sum += live.hr_bpm;
-                        if (s_phase_hr_n < UINT16_MAX) {
-                            s_phase_hr_n++;
-                        }
-                    }
+
 
                     need_log = true;
                 }
-            }
-            else
-            {
-                if (interval_was_recording && s_interval_phase_active)
-                {
-                    const interval_target_t *target = NULL;
-                    if (s_interval_cfg_valid)
-                    {
-                        target = (s_interval_log_phase == INTERVAL_PHASE_WORK) ? &s_interval_log_cfg.work : &s_interval_log_cfg.rest;
-                    }
-                    build_interval_row(&interval_row,
-                                       s_interval_log_phase,
-                                       s_interval_log_round,
-                                       target,
-                                       s_session_time_s - s_interval_phase_start_time_s,
-                                       s_activity.distance_m - s_interval_phase_start_dist_m,
-                                       s_activity.stroke_count - s_interval_phase_start_strokes);
-                    interval_row.avg_hr = take_phase_hr_avg();
-                    need_interval_log = true;
-                    s_interval_phase_active = false;
-                    s_interval_log_phase = INTERVAL_PHASE_IDLE;
-                    s_interval_log_round = 0;
-                }
-                s_interval_cfg_valid = false;
             }
 
             if (s_activity_mutex)
@@ -622,25 +412,16 @@ void stroke_task(void *arg)
             if (need_log && s_log_q)
             {
                 activity_log_msg_t msg = {0};
-                msg.kind = ACT_LOG_ROW_STROKE;
-                msg.data.stroke = row;
-                xQueueSend(s_log_q, &msg, 0);
-            }
-            if (need_interval_log && s_log_q)
-            {
-                activity_log_msg_t msg = {0};
-                msg.kind = ACT_LOG_ROW_INTERVAL;
-                msg.data.interval = interval_row;
+                msg.row = row;
                 xQueueSend(s_log_q, &msg, 0);
             }
 
+
             bool recording = s_activity_recording;
-            s_interval_prev_recording = s_activity_recording;
 
             TickType_t now = xTaskGetTickCount();
             bool catch_ui = (ev == STROKE_EVENT_CATCH);
-            if (!ui_is_modal_active() &&
-                (catch_ui || (now - last_ui_tick) >= ui_period))
+            if (catch_ui || (now - last_ui_tick) >= ui_period)
             {
                 last_ui_tick = now;
 
@@ -659,26 +440,9 @@ void stroke_task(void *arg)
                 if (recording && stroke_len_m > 0.01f)
                     stroke_len_disp = stroke_len_m;
 
-                interval_ui_state_t ist = {0};
-                bool interval_active = false;
-                if (recording && activity_type_is_interval(s_activity.activity_type))
-                {
-                    interval_program_get_ui(&ist);
-                    interval_active = ist.active;
-                }
-
-                race_ui_state_t rst = {0};
-                if (recording && s_activity.activity_type == ACTIVITY_RACE)
-                {
-                    race_program_get_ui(&rst);
-                }
-
-                uint8_t target_spm = recording ? interval_program_target_spm() : 0;
-
                 coach_ui_snapshot_t snap = {
                     .seq = ++s_ui_seq,
                     .recording = recording,
-                    .touch_locked = ui_is_touch_lock(),
                     .gps_connected = gps_connected,
                     .gps_ok = gps_ok,
                     .gps_stale = gps_connected && !gps_ok,
@@ -692,23 +456,10 @@ void stroke_task(void *arg)
                     .spm = spm_disp,
                     .stroke_len_m = stroke_len_disp,
                     .stroke_count = recording ? s_activity.stroke_count : UINT32_MAX,
-                    .activity_type = s_activity.activity_type,
                     .split_len_m = s_current_split_m,
                     .split_progress_m = recording ? (s_activity.distance_m - s_split_anchor_m) : NAN,
                     .last_split_pace_s = recording ? s_last_split_pace : NAN,
                     .last_split_delta_s = recording ? s_last_split_delta : NAN,
-                    .interval_active = interval_active,
-                    .interval_phase = ist.phase,
-                    .interval_unit = ist.unit,
-                    .interval_remaining = ist.remaining,
-                    .round_idx = ist.round_idx,
-                    .rounds = ist.rounds,
-                    .target_spm = target_spm,
-                    .race_active = rst.active,
-                    .race_finished = rst.finished,
-                    .race_delta_s = rst.delta_s,
-                    .race_remaining_m = rst.remaining_m,
-                    .race_projected_s = rst.projected_finish_s,
                 };
                 sensor_hub_live_t live_ui = {0};
                 sensor_hub_get_live(&live_ui);

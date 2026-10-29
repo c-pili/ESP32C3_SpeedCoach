@@ -1,3 +1,12 @@
-build/
-sdkconfig
-sdkconfig.old
+# ESP-IDF build output
+/build/
+
+# Local ESP-IDF configuration
+/sdkconfig
+/sdkconfig.old
+
+# Components downloaded by the ESP-IDF component manager
+/managed_components/
+
+# Generated filesystem image
+/storage_image/

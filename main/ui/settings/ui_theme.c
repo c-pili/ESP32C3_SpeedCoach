@@ -30,8 +30,6 @@ static ui_theme_palette_t palette_light(void)
         .border = lv_color_hex(0xD5DCE6),
         .accent = lv_color_hex(0x2B5EA7),
         .accent_text = lv_color_hex(0xFFFFFF),
-        .work = lv_color_hex(0xEA580C),
-        .rest = lv_color_hex(0x16A34A),
         .alert = lv_color_hex(0xDC2626),
         .rec = lv_color_hex(0xEF4444),
     };
@@ -47,8 +45,6 @@ static ui_theme_palette_t palette_dark(void)
         .border = lv_color_hex(0x334155),
         .accent = lv_color_hex(0x7BA3D9),
         .accent_text = lv_color_hex(0x101826),
-        .work = lv_color_hex(0xFB923C),
-        .rest = lv_color_hex(0x4ADE80),
         .alert = lv_color_hex(0xF87171),
         .rec = lv_color_hex(0xF87171),
     };
@@ -354,16 +350,6 @@ void ui_theme_apply_tile(lv_obj_t *obj)
     lv_obj_remove_style(obj, &s_style_tile_pressed, LV_PART_MAIN | LV_STATE_PRESSED);
     lv_obj_add_style(obj, &s_style_tile, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_add_style(obj, &s_style_tile_pressed, LV_PART_MAIN | LV_STATE_PRESSED);
-}
-
-lv_color_t ui_theme_color_work(void)
-{
-    return s_palette.work;
-}
-
-lv_color_t ui_theme_color_rest(void)
-{
-    return s_palette.rest;
 }
 
 lv_color_t ui_theme_color_alert(void)

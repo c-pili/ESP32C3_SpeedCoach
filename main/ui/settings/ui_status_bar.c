@@ -183,11 +183,6 @@ static void apply_rec_lock(ui_status_bar_t *bar)
                                   0);
         lv_obj_set_style_bg_opa(bar->rec_dot, bar->recording ? LV_OPA_COVER : LV_OPA_50, 0);
     }
-    if (bar->lock_label) {
-        label_set_text_if_changed(bar->lock_label,
-                                  bar->touch_locked ? LV_SYMBOL_EYE_CLOSE : LV_SYMBOL_EYE_OPEN);
-        ui_theme_apply_label(bar->lock_label, !bar->touch_locked);
-    }
 }
 
 static void status_bar_clock_update(ui_status_bar_t *bar)
@@ -360,12 +355,6 @@ void ui_status_bar_create_ex(ui_status_bar_t *bar, lv_obj_t *parent, ui_status_b
         lv_obj_set_style_bg_color(bar->rec_dot, lv_color_make(80, 80, 80), 0);
         lv_obj_clear_flag(bar->rec_dot, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_grid_cell(bar->rec_dot, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 0, 1);
-
-        bar->lock_label = lv_label_create(bar->root);
-        ui_theme_apply_label(bar->lock_label, true);
-        lv_label_set_text(bar->lock_label, LV_SYMBOL_EYE_OPEN);
-        lv_obj_set_style_text_font(bar->lock_label, ui_font_caption(), 0);
-        lv_obj_set_grid_cell(bar->lock_label, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 0, 1);
 
         bar->ble_label = lv_label_create(bar->root);
         lv_label_set_text(bar->ble_label, LV_SYMBOL_BLUETOOTH);
@@ -592,13 +581,11 @@ void ui_status_bar_apply_snapshot(const coach_ui_snapshot_t *snap)
         bool gps_chg = (bar->gps_connected != snap->gps_connected) ||
                        (bar->gps_bars_count != snap->gps_bars) ||
                        (bar->gps_stale != snap->gps_stale);
-        bool rec_chg = (bar->recording != snap->recording) ||
-                       (bar->touch_locked != snap->touch_locked);
+        bool rec_chg = bar->recording != snap->recording;
         bar->gps_connected = snap->gps_connected;
         bar->gps_bars_count = snap->gps_bars;
         bar->gps_stale = snap->gps_stale;
         bar->recording = snap->recording;
-        bar->touch_locked = snap->touch_locked;
         if (gps_chg) {
             apply_gps_visual(bar);
         }
