@@ -90,7 +90,7 @@ static ui_orientation_t decide_orientation_from_accel(float ax, float ay, float 
     }
 }
 
-void init_imu(void)
+bool init_imu(void)
 {
     ESP_LOGI(TAG, "Init IMU I2C bus + MPU6050...");
 
@@ -102,13 +102,15 @@ void init_imu(void)
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "IMU I2C unavailable (%s); Wi-Fi setup remains available", esp_err_to_name(err));
         memset(&s_imu, 0, sizeof(s_imu));
-        return;
+        return false;
     }
     err = mpu6050_init(&s_imu, &s_imu_bus, CONFIG_IMU_MPU6050_ADDR);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "MPU6050 unavailable (%s); Wi-Fi setup remains available", esp_err_to_name(err));
         memset(&s_imu, 0, sizeof(s_imu));
+        return false;
     }
+    return true;
 }
 
 void stroke_task(void *arg)

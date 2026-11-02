@@ -1,6 +1,6 @@
 # Export Wi-Fi des entraînements
 
-Au démarrage, le SpeedCoach crée le réseau `SpeedCoach_Wi-Fi` (mot de passe `SpeedCoach`) avant d'initialiser les capteurs et sert la page `http://192.168.4.1`. La page liste les activités enregistrées et télécharge le fichier `Workout.tcx` compatible avec les outils d'entraînement. Le point d'accès peut donc être utilisé pendant le montage sur table, même sans MPU6050.
+Au démarrage, le SpeedCoach initialise NVS, puis crée le réseau `SpeedCoach_Wi-Fi` (mot de passe `SpeedCoach`) avant l'écran et les capteurs. Sans MPU6050 détecté, le firmware reste en mode test léger pour préserver la mémoire et maintenir le point d'accès. La page `http://192.168.4.1` reste disponible pour vérifier la liaison Wi-Fi ; les fonctions de séance nécessitent le montage complet.
 
 Avant une séance, la page permet de choisir Libre, Temps unique, Distance unique ou Intervalles, puis l'affichage du coach : allure, vitesse ou courbe d'accélération en direct. Le formulaire permet de démarrer la séance depuis le téléphone. Les séances à temps et distance s'arrêtent à leur objectif ; les intervalles s'arrêtent après le nombre de répétitions configuré. La courbe dépend du MPU6050 et n'affichera pas de données si le capteur est absent.
 

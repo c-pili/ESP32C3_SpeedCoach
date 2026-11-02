@@ -71,12 +71,17 @@ void app_main(void)
     esp_err_t ap_err = wifi_export_start();
     if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
 
+    /* A bare board has no IMU and does not need the full coach stack. Staying
+     * in this small mode preserves heap for Wi-Fi association and HTTP. */
+    if (!init_imu()) {
+        ESP_LOGW(TAG, "MPU6050 absent: keeping Wi-Fi setup/export active in bench mode");
+        wifi_export_set_callbacks(NULL, NULL, ui_status_bar_read_battery_percent);
+        while (1) vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
     esp_err_t display_err = init_display_and_lvgl();
     const bool ui_ready = (display_err == ESP_OK);
     s_ui_ready = ui_ready;
-    /* The IMU is optional during bench setup. init_imu logs failures and the
-     * stroke task will report unavailable samples without stopping the AP. */
-    init_imu();
     if (s_imu_bus.bus) (void)PCF85063_init(&s_imu_bus);
     esp_err_t sensor_err = sensor_hub_init();
     if (sensor_err != ESP_OK)
