@@ -97,19 +97,18 @@ static bool addr_eq(const uint8_t a[6], const uint8_t b[6])
     return memcmp(a, b, 6) == 0;
 }
 
-static bool name_contains_suunto(const char *name)
+static bool is_primary_hr_watch(const char *name)
 {
-    static const char needle[] = "suunto";
+    static const char target_name[] = "Suunto Watch HR 1029";
     if (!name) return false;
-    for (const char *p = name; *p; p++) {
-        size_t i = 0;
-        while (needle[i] && p[i] &&
-               tolower((unsigned char)p[i]) == needle[i]) {
-            i++;
-        }
-        if (needle[i] == '\0') return true;
+    const char *target = target_name;
+    while (*name && *target) {
+        if (tolower((unsigned char)*name) != tolower((unsigned char)*target))
+            return false;
+        name++;
+        target++;
     }
-    return false;
+    return *name == '\0' && *target == '\0';
 }
 
 static void copy_name(char *dst, size_t dst_len, const uint8_t *name, uint8_t name_len)
@@ -254,6 +253,17 @@ static void load_slot(sensor_kind_t kind)
         nvs_helper_get_sensor_name(slot->name, sizeof(slot->name));
     }
     slot->saved = addr_nonzero(slot->addr);
+    if (kind == SENSOR_KIND_HR && slot->saved && !is_primary_hr_watch(slot->name)) {
+        ESP_LOGW(TAG, "Ignoring saved HR device '%s'; only Suunto Watch HR 1029 is allowed",
+                 slot->name[0] ? slot->name : "unnamed");
+        memset(slot->addr, 0, sizeof(slot->addr));
+        slot->addr_type = 0;
+        slot->saved = false;
+        slot->name[0] = '\0';
+        nvs_helper_set_hr_addr(slot->addr);
+        nvs_helper_set_hr_addr_type(0);
+        nvs_helper_set_hr_name("");
+    }
     if (slot->saved && slot->name[0] == '\0') {
         snprintf(slot->name, sizeof(slot->name),
                  kind == SENSOR_KIND_HR ? "Heart rate" : "RowPod");
@@ -433,8 +443,10 @@ static esp_err_t begin_scan(sensor_kind_t kind)
     xSemaphoreGive(s_mux);
 
     struct ble_gap_disc_params dp = {
-        .itvl = 0,
-        .window = 0,
+        /* Leave most radio time to the Wi-Fi AP while still checking for the
+         * watch regularly. BLE interval units are 0.625 ms. */
+        .itvl = 160,  /* 100 ms */
+        .window = 48, /* 30 ms */
         .filter_policy = 0,
         .limited = 0,
         .passive = 0,
@@ -458,6 +470,11 @@ static esp_err_t issue_connect(sensor_kind_t kind, const sensor_hub_device_t *de
 {
     if (!s_synced || !dev) {
         return ESP_ERR_INVALID_STATE;
+    }
+    if (kind == SENSOR_KIND_HR && !is_primary_hr_watch(dev->name)) {
+        ESP_LOGW(TAG, "Rejecting HR device '%s'; expected Suunto Watch HR 1029",
+                 dev->name[0] ? dev->name : "unnamed");
+        return ESP_ERR_NOT_FOUND;
     }
     sensor_slot_t *slot = &s_slots[kind];
     if (slot->state == SENSOR_HUB_CONNECTED || slot->state == SENSOR_HUB_CONNECTING) {
@@ -496,6 +513,9 @@ static esp_err_t issue_connect(sensor_kind_t kind, const sensor_hub_device_t *de
 
 static esp_err_t start_connect(sensor_kind_t kind, const sensor_hub_device_t *dev)
 {
+    if (!dev || (kind == SENSOR_KIND_HR && !is_primary_hr_watch(dev->name))) {
+        return ESP_ERR_NOT_FOUND;
+    }
     if (!s_synced) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -544,20 +564,16 @@ static int gap_event(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_DISC_COMPLETE: {
         ESP_LOGI(TAG, "scan done n=%u", (unsigned)s_found_n);
         xSemaphoreTake(s_mux, portMAX_DELAY);
-        /* Prefer a Suunto HR broadcaster; otherwise auto-connect only when
-         * discovery found exactly one compatible sensor. */
+        /* Only pair the owner's watch; never select another HR broadcaster. */
         int selected = -1;
         if (s_pend == PEND_NONE && s_scan_kind == SENSOR_KIND_HR) {
             for (size_t i = 0; i < s_found_n; i++) {
                 if (s_found[i].kind == SENSOR_KIND_HR &&
-                    name_contains_suunto(s_found[i].name)) {
+                    is_primary_hr_watch(s_found[i].name)) {
                     selected = (int)i;
                     break;
                 }
             }
-        }
-        if (s_pend == PEND_NONE && selected < 0 && s_found_n == 1) {
-            selected = 0;
         }
         if (s_pend == PEND_NONE && selected >= 0) {
             s_pend = PEND_CONNECT;

@@ -22,6 +22,8 @@ The Suunto watch must support **Heart Rate Broadcast**, and that setting must be
 3. Ask for a connection interval of 100–200 ms with slave latency 4. The strap notifies about once a second, so it can skip four connection events. Supervision timeout is 4 s, which is above `(1 + latency) * interval_max * 2`.
 4. Read Battery Level `0x180F` / `0x2A19` once, if the strap has it. Missing battery is not a failure.
 
+The automatic heart-rate pairing is restricted to the owner's **Suunto Watch HR 1029**. Other HR broadcasters are ignored, even when they are the only device found. The web dashboard reports BLE availability, discovery/reconnection state, link state and the live BPM.
+
 ### Heart Rate Measurement flags
 
 `0x2A37` (Bluetooth GATT Specification Supplement):

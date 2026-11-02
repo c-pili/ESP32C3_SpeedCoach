@@ -19,7 +19,7 @@ Firmware slug: `esp32c3_speed_coach`.
 | Wi-Fi setup and export | AP starts at boot before sensor initialization; configure the coach and download TCX at `http://192.168.4.1` |
 | Physical control | One PWR button starts/stops and saves a standard activity; a 5-second hold saves then powers off |
 | Reflective display | No backlight; Sharp memory-LCD VCOM is maintained at 1 Hz; the display sleeps after 45 minutes without user activity and stays awake while recording |
-| BLE heart rate | Automatically discovers a Suunto HR broadcaster on first boot, saves it, and reconnects on later boots; live bpm is always on the dashboard |
+| BLE heart rate | Automatically pairs only with `Suunto Watch HR 1029`, saves it, and reconnects on later boots; live BPM and link state are shown on the Wi-Fi page |
 | BLE RowPod | Optional paired motion-pod telemetry is logged when connected; see [docs/ble_sensors.md](docs/ble_sensors.md) |
 
 ## On-water controls
