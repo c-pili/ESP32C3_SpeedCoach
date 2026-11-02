@@ -186,12 +186,12 @@ esp_err_t wifi_export_start(void)
     httpd_uri_t index = {.uri = "/", .method = HTTP_GET, .handler = index_handler};
     httpd_uri_t download = {.uri = "/download", .method = HTTP_GET, .handler = download_handler};
     httpd_uri_t status = {.uri = "/api/status", .method = HTTP_GET, .handler = status_handler};
-    httpd_uri_t config = {.uri = "/config", .method = HTTP_GET, .handler = config_handler};
+    httpd_uri_t config_uri = {.uri = "/config", .method = HTTP_GET, .handler = config_handler};
     httpd_uri_t start = {.uri = "/start", .method = HTTP_GET, .handler = start_handler};
     httpd_register_uri_handler(s_server, &index);
     httpd_register_uri_handler(s_server, &download);
     httpd_register_uri_handler(s_server, &status);
-    httpd_register_uri_handler(s_server, &config);
+    httpd_register_uri_handler(s_server, &config_uri);
     httpd_register_uri_handler(s_server, &start);
     ESP_LOGI(TAG, "AP started: %s (password: %s), http://192.168.4.1", AP_SSID, AP_PASSWORD);
     return ESP_OK;
