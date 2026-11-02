@@ -23,10 +23,12 @@ typedef esp_err_t (*wifi_config_callback_t)(const wifi_workout_config_t *config)
 typedef esp_err_t (*wifi_activity_ready_callback_t)(void);
 typedef esp_err_t (*wifi_activity_callback_t)(void);
 typedef esp_err_t (*wifi_battery_callback_t)(int *percent);
+typedef esp_err_t (*wifi_sensor_start_callback_t)(void);
 
 esp_err_t wifi_export_start(void);
 esp_err_t wifi_export_stop(void);
 void wifi_export_set_callbacks(wifi_config_callback_t config_cb,
                                wifi_activity_ready_callback_t ready_cb,
                                wifi_activity_callback_t start_cb,
-                               wifi_battery_callback_t battery_cb);
+                               wifi_battery_callback_t battery_cb,
+                               wifi_sensor_start_callback_t sensor_start_cb);

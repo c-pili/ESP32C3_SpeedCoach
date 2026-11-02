@@ -840,6 +840,9 @@ esp_err_t sensor_hub_start_scan(sensor_kind_t kind)
 
 esp_err_t sensor_hub_stop_scan(void)
 {
+    if (!s_mux || !s_available) {
+        return ESP_OK;
+    }
     xSemaphoreTake(s_mux, portMAX_DELAY);
     bool scanning = (s_gap == GAP_SCANNING);
     if (scanning) {
@@ -854,6 +857,9 @@ esp_err_t sensor_hub_stop_scan(void)
 
 bool sensor_hub_is_scanning(sensor_kind_t *kind_out)
 {
+    if (!s_mux || !s_available) {
+        return false;
+    }
     xSemaphoreTake(s_mux, portMAX_DELAY);
     bool scanning = (s_gap == GAP_SCANNING);
     if (kind_out && scanning) {
@@ -865,7 +871,7 @@ bool sensor_hub_is_scanning(sensor_kind_t *kind_out)
 
 size_t sensor_hub_get_results(sensor_hub_device_t *out, size_t max)
 {
-    if (!out || max == 0) {
+    if (!out || max == 0 || !s_mux || !s_available) {
         return 0;
     }
     xSemaphoreTake(s_mux, portMAX_DELAY);
@@ -877,6 +883,9 @@ size_t sensor_hub_get_results(sensor_hub_device_t *out, size_t max)
 
 esp_err_t sensor_hub_connect_result(size_t index)
 {
+    if (!s_mux || !s_available) {
+        return ESP_ERR_INVALID_STATE;
+    }
     sensor_hub_device_t dev;
     xSemaphoreTake(s_mux, portMAX_DELAY);
     if (index >= s_found_n) {
@@ -893,6 +902,7 @@ esp_err_t sensor_hub_connect_saved(sensor_kind_t kind)
     if (kind >= SENSOR_KIND_COUNT) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (!s_mux || !s_available) return ESP_ERR_INVALID_STATE;
     sensor_hub_device_t dev = {0};
     xSemaphoreTake(s_mux, portMAX_DELAY);
     sensor_slot_t *slot = &s_slots[kind];
@@ -948,6 +958,7 @@ esp_err_t sensor_hub_disconnect(sensor_kind_t kind)
     if (kind >= SENSOR_KIND_COUNT) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (!s_mux || !s_available) return ESP_ERR_INVALID_STATE;
     release_link(kind, false);
     return ESP_OK;
 }
@@ -957,6 +968,7 @@ esp_err_t sensor_hub_forget(sensor_kind_t kind)
     if (kind >= SENSOR_KIND_COUNT) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (!s_mux || !s_available) return ESP_ERR_INVALID_STATE;
     release_link(kind, true);
     return ESP_OK;
 }

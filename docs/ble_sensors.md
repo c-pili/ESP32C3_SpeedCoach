@@ -1,19 +1,19 @@
 # BLE sensors
 
-The speed coach is a NimBLE **central and observer**. It does not advertise. Two connection slots share one radio:
+The speed coach is a NimBLE **central and observer**. It does not advertise. NimBLE starts when the phone first requests BLE status from the Wi-Fi page, after Wi-Fi association, so Bluetooth allocations cannot interfere with joining the AP. The firmware allows one BLE connection at a time:
 
 | Slot | What it connects to | Stage |
 |------|---------------------|--------|
-| Heart rate | Any strap that advertises the standard Heart Rate Service `0x180D` | Shipped |
+| Heart rate | Owner's Suunto Watch HR 1029 | Shipped |
 | RowPod | C3 motion tracker advertising `9b7e1000-2b2f-4f71-9b86-4bb2e6d54f00` | Optional telemetry path; UI controls are not available in the button-only interface |
 
-`CONFIG_BT_NIMBLE_MAX_CONNECTIONS` is 2. ATT MTU stays 23. Bonding stays off: the heart-rate profile does not need it, and a bond table costs RAM on a board with no PSRAM.
+`CONFIG_BT_NIMBLE_MAX_CONNECTIONS` is 1. ATT MTU stays 23. Bonding stays off: the heart-rate profile does not need it, and a bond table costs RAM on a board with no PSRAM.
 
 Free internal heap is logged immediately before and after `nimble_port_init`. Do not turn on PSRAM to hide that cost.
 
 ## Heart-rate strap or Suunto watch
 
-At boot, if no HR device has been saved yet, the coach automatically scans for advertisements that carry the standard Heart Rate Service UUID `0x180D` (or Heart Rate service data). It prefers an advertiser named Suunto; if there is exactly one compatible advertiser, it connects to that device. The selected address and name are saved to NVS (`hr_addr`, `hr_atyp`, `hr_name`) for automatic reconnects on later boots. If multiple non-Suunto HR devices are visible, no device is selected.
+After the Wi-Fi page starts BLE, if no HR device has been saved yet, the coach scans for the exact advertised name **Suunto Watch HR 1029** and connects only to that device. Other HR broadcasters are ignored. The selected address and name are saved to NVS (`hr_addr`, `hr_atyp`, `hr_name`) for automatic reconnects the next time BLE starts from the Wi-Fi page.
 
 The Suunto watch must support **Heart Rate Broadcast**, and that setting must be enabled in the sport mode before starting the workout. Suunto lists this feature for Suunto Vertical 2, Suunto Race 2, Suunto Race, and Suunto Race S. The watch advertises HR for the duration of that workout. The coach then runs GATT discovery on its NimBLE host task:
 
@@ -39,7 +39,7 @@ Off-skin (`contact == 2`) is stored as 0 bpm. A sample older than 5 s is also re
 
 ### Reconnect
 
-A saved strap reconnects automatically after boot and after a connection drop. The retry timer runs on the NimBLE host task. The first try is at 500 ms; after a failure the delay is 2 s and doubles up to 15 s. The single-button firmware has no manual disconnect or pairing screen.
+A saved watch reconnects automatically after BLE starts from the Wi-Fi page and after a connection drop. The retry timer runs on the NimBLE host task. The first try is at 500 ms; after a failure the delay is 2 s and doubles up to 15 s. The single-button firmware has no manual disconnect or pairing screen.
 
 Only one `ble_gap_connect` is outstanding. A scan cancels a pending reconnect and arms it again when the scan ends. Opening Sensors does not start a scan by itself, so a reconnect already in progress is left alone.
 

@@ -34,7 +34,7 @@ static bool start_activity_log(uint32_t id)
     if (s_activity_mutex)
         xSemaphoreGive(s_activity_mutex);
     (void)wifi_export_start();
-    data_page_show_activity_toast(false);
+    if (s_disp) data_page_show_activity_toast(false);
     return false;
 }
 
@@ -56,7 +56,7 @@ void activity_worker_task(void *arg)
             if (s_activity_mutex)
                 xSemaphoreGive(s_activity_mutex);
             ESP_LOGE("ACT", "activity start rejected: flash storage is not mounted");
-            data_page_show_activity_toast(false);
+            if (s_disp) data_page_show_activity_toast(false);
             continue;
         }
 
@@ -80,7 +80,7 @@ void activity_worker_task(void *arg)
             if (!start_activity_log(id))
                 continue;
 
-            data_page_show_activity_toast(true);
+            if (s_disp) data_page_show_activity_toast(true);
             ESP_LOGI("ACT", "START id=%lu", (unsigned long)id);
             continue;
         }
@@ -102,7 +102,7 @@ void activity_worker_task(void *arg)
             if (s_activity_mutex)
                 xSemaphoreGive(s_activity_mutex);
 
-            data_page_show_activity_toast(false);
+            if (s_disp) data_page_show_activity_toast(false);
             ESP_LOGI("ACT", "STOP id=%lu Dist=%.1fm dur=%.1fs",
                      (unsigned long)snapshot.id, (double)snapshot.distance_m,
                      (double)(snapshot.duration_ms / 1000.0f));

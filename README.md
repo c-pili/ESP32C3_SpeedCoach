@@ -16,10 +16,10 @@ Firmware slug: `esp32c3_speed_coach`.
 | Stroke detection | Count, SPM, drive/recovery times from MPU6050 over I2C |
 | Activity logging | Stroke CSV, split CSV, and TCX files stored in the ESP32-C3 SPIFFS partition |
 | Workout setup | Web selection for free, timed, distance, or interval sessions; timed and distance targets stop automatically |
-| Wi-Fi setup and export | AP starts at boot before sensor initialization; configure the coach and download TCX at `http://192.168.4.1` |
+| Wi-Fi setup and export | AP starts at boot before optional sensors; BLE starts after the phone joins Wi-Fi and loads the page. Configure the coach and download TCX at `http://192.168.4.1` |
 | Physical control | One PWR button starts/stops and saves a standard activity; a 5-second hold saves then powers off |
 | Reflective display | No backlight; Sharp memory-LCD VCOM is maintained at 1 Hz; the display sleeps after 45 minutes without user activity and stays awake while recording |
-| BLE heart rate | Automatically pairs only with `Suunto Watch HR 1029`, saves it, and reconnects on later boots; live BPM and link state are shown on the Wi-Fi page |
+| BLE heart rate | After the Wi-Fi page loads, automatically pairs only with `Suunto Watch HR 1029`, saves it, and reconnects; live BPM and link state are shown on the page |
 | BLE RowPod | Optional paired motion-pod telemetry is logged when connected; see [docs/ble_sensors.md](docs/ble_sensors.md) |
 
 ## On-water controls

@@ -31,6 +31,7 @@
 
 static const char *TAG = "app";
 static bool s_ui_ready;
+static bool s_sensor_hub_init_attempted;
 
 #define LOG_QUEUE_LEN 32
 
@@ -66,6 +67,17 @@ static esp_err_t web_activity_ready(void)
     return ESP_OK;
 }
 
+static esp_err_t web_start_sensor_hub(void)
+{
+    if (sensor_hub_available()) return ESP_OK;
+    if (s_sensor_hub_init_attempted) return ESP_ERR_INVALID_STATE;
+    s_sensor_hub_init_attempted = true;
+    esp_err_t err = sensor_hub_init();
+    if (err != ESP_OK)
+        ESP_LOGW(TAG, "BLE sensor startup failed: %s", esp_err_to_name(err));
+    return err;
+}
+
 void app_main(void)
 {
     /* The ESP-IDF Wi-Fi driver stores calibration/configuration in NVS. */
@@ -76,19 +88,19 @@ void app_main(void)
     esp_err_t ap_err = wifi_export_start();
     if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
 
-    /* The UI, web setup and BLE heart-rate link remain usable without the IMU.
-     * Only stroke metrics and the acceleration graph require that sensor. */
+    /* Keep a bare-board Wi-Fi setup lightweight. The remote web UI remains
+     * available without the IMU; the local LVGL display is initialized only
+     * when the sensor board is present. */
     const bool imu_ready = init_imu();
     if (!imu_ready)
-        ESP_LOGW(TAG, "MPU6050 absent: starting full UI/BLE/Wi-Fi mode; stroke metrics unavailable");
+        ESP_LOGW(TAG, "MPU6050 absent: using lightweight Wi-Fi session setup; stroke metrics unavailable");
 
     if (s_imu_bus.bus) (void)PCF85063_init(&s_imu_bus);
-    esp_err_t sensor_err = sensor_hub_init();
-    if (sensor_err != ESP_OK)
-        ESP_LOGW(TAG, "BLE sensors unavailable: %s", esp_err_to_name(sensor_err));
-
-    esp_err_t display_err = init_display_and_lvgl();
-    const bool ui_ready = (display_err == ESP_OK);
+    /* NimBLE starts after the phone has joined the AP and requested the page.
+     * This keeps its initial allocations and active scan away from Wi-Fi
+     * association. */
+    esp_err_t display_err = imu_ready ? init_display_and_lvgl() : ESP_ERR_NOT_SUPPORTED;
+    const bool ui_ready = imu_ready && display_err == ESP_OK;
     s_ui_ready = ui_ready;
 
     gps_neo_m8n_config_t gps_cfg = {
@@ -136,7 +148,7 @@ void app_main(void)
         data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
     }
     wifi_export_set_callbacks(web_configure_workout, web_activity_ready, web_start_activity,
-                              ui_status_bar_read_battery_percent);
+                              ui_status_bar_read_battery_percent, web_start_sensor_hub);
 
     esp_err_t storage_err = flash_storage_mount(&s_storage);
     if (storage_err != ESP_OK)
@@ -158,7 +170,7 @@ void app_main(void)
         ui_register_auto_rotate_cb(on_auto_rotate_setting_changed);
     }
 
-    app_pwr_key_setup();
+    if (ui_ready) app_pwr_key_setup();
 
     /* Created last, so it competes for whatever internal DRAM is left after
      * LVGL/BLE. A silent pdFAIL here kills SPM with no other symptom. */

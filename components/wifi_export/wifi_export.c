@@ -25,16 +25,20 @@ static wifi_config_callback_t s_config_cb;
 static wifi_activity_ready_callback_t s_activity_ready_cb;
 static wifi_activity_callback_t s_activity_cb;
 static wifi_battery_callback_t s_battery_cb;
+static wifi_sensor_start_callback_t s_sensor_start_cb;
+static bool s_sensor_start_attempted;
 
 void wifi_export_set_callbacks(wifi_config_callback_t config_cb,
                                wifi_activity_ready_callback_t ready_cb,
                                wifi_activity_callback_t start_cb,
-                               wifi_battery_callback_t battery_cb)
+                               wifi_battery_callback_t battery_cb,
+                               wifi_sensor_start_callback_t sensor_start_cb)
 {
     s_config_cb = config_cb;
     s_activity_ready_cb = ready_cb;
     s_activity_cb = start_cb;
     s_battery_cb = battery_cb;
+    s_sensor_start_cb = sensor_start_cb;
 }
 
 static esp_err_t index_handler(httpd_req_t *req)
@@ -42,7 +46,7 @@ static esp_err_t index_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_sendstr_chunk(req, "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>SpeedCoach</title><h1>SpeedCoach</h1><p>Batterie : <span id=b>lecture...</span></p>");
     if (!s_config_cb || !s_activity_ready_cb || !s_activity_cb) {
-        httpd_resp_sendstr_chunk(req, "<p><b>Mode test Wi-Fi :</b> les fonctions de séance ne sont pas initialisées sur ce démarrage.</p>");
+        httpd_resp_sendstr_chunk(req, "<p>Initialisation des séances… cette page va se recharger.</p><script>setTimeout(()=>location.reload(),2000)</script>");
     } else {
         httpd_resp_sendstr_chunk(req, "<form action=/config><h2>Préparer une séance</h2><label>Type <select name=mode><option value=0>Libre</option><option value=1>Temps unique</option><option value=2>Distance unique</option><option value=3>Intervalles</option></select></label><p>Durée (min) <input name=duration type=number min=1 value=30></p><p>Distance (m) <input name=distance type=number min=1 value=1000></p><p>Travail (s) <input name=work type=number min=1 value=60></p><p>Repos (s) <input name=rest type=number min=1 value=60></p><p>Répétitions <input name=reps type=number min=1 value=8></p><label>Affichage <select name=display><option value=0>Allure, temps, cadence, distance</option><option value=1>Vitesse, temps, cadence, distance</option><option value=2>Courbe d'accélération en direct</option></select></label><p><button>Enregistrer la séance</button></p></form><p><a href=/start>Démarrer cette séance</a></p>");
     }
@@ -84,17 +88,30 @@ static esp_err_t status_handler(httpd_req_t *req)
 
 static esp_err_t sensors_handler(httpd_req_t *req)
 {
+    /* Start NimBLE only after the phone has associated and requested the page.
+     * This keeps BLE allocations away from the Wi-Fi association window. */
+    if (!s_sensor_start_attempted && s_sensor_start_cb) {
+        s_sensor_start_attempted = true;
+        esp_err_t start_err = s_sensor_start_cb();
+        if (start_err != ESP_OK)
+            ESP_LOGW(TAG, "BLE sensor startup deferred/failed: %s", esp_err_to_name(start_err));
+    }
+
     sensor_hub_slot_info_t slot = {0};
     sensor_hub_live_t live = {0};
     sensor_kind_t scanning_kind = SENSOR_KIND_COUNT;
-    bool scanning = sensor_hub_is_scanning(&scanning_kind) && scanning_kind == SENSOR_KIND_HR;
-    sensor_hub_get_slot(SENSOR_KIND_HR, &slot);
-    sensor_hub_get_live(&live);
+    bool available = sensor_hub_available();
+    bool scanning = available && sensor_hub_is_scanning(&scanning_kind) &&
+                    scanning_kind == SENSOR_KIND_HR;
+    if (available) {
+        sensor_hub_get_slot(SENSOR_KIND_HR, &slot);
+        sensor_hub_get_live(&live);
+    }
     char body[128];
     if (live.hr_bpm) {
         snprintf(body, sizeof(body),
                  "{\"available\":%s,\"connected\":%s,\"connecting\":%s,\"saved\":%s,\"scanning\":%s,\"seen\":%s,\"bpm\":%u}",
-                 sensor_hub_available() ? "true" : "false",
+                 available ? "true" : "false",
                  live.hr_connected ? "true" : "false",
                  slot.state == SENSOR_HUB_CONNECTING ? "true" : "false",
                  slot.saved ? "true" : "false",
@@ -103,7 +120,7 @@ static esp_err_t sensors_handler(httpd_req_t *req)
     } else {
         snprintf(body, sizeof(body),
                  "{\"available\":%s,\"connected\":%s,\"connecting\":%s,\"saved\":%s,\"scanning\":%s,\"seen\":%s,\"bpm\":null}",
-                 sensor_hub_available() ? "true" : "false",
+                 available ? "true" : "false",
                  live.hr_connected ? "true" : "false",
                  slot.state == SENSOR_HUB_CONNECTING ? "true" : "false",
                  slot.saved ? "true" : "false",
@@ -167,7 +184,7 @@ static esp_err_t start_handler(httpd_req_t *req)
         httpd_resp_set_status(req, "409 Conflict");
         httpd_resp_set_type(req, "text/html; charset=utf-8");
         return httpd_resp_sendstr(req,
-            "<meta charset=utf-8><p>Séance indisponible : le SpeedCoach est en mode test Wi-Fi ou ses services ne sont pas initialisés.</p><a href='/'>Retour</a>");
+            "<meta charset=utf-8><p>Séance indisponible : les services du SpeedCoach ne sont pas initialisés.</p><a href='/'>Retour</a>");
     }
     esp_err_t ready = s_activity_ready_cb();
     if (ready != ESP_OK) {
