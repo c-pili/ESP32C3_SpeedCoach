@@ -410,11 +410,23 @@ esp_err_t gps_neo_m8n_init(const gps_neo_m8n_config_t *cfg)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
     };
-    ESP_ERROR_CHECK(uart_param_config(s_uart, &uc));
-    ESP_ERROR_CHECK(uart_set_pin(s_uart, cfg->tx_gpio, cfg->rx_gpio,
-                                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+    esp_err_t err = uart_param_config(s_uart, &uc);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "UART config unavailable: %s", esp_err_to_name(err));
+        return err;
+    }
+    err = uart_set_pin(s_uart, cfg->tx_gpio, cfg->rx_gpio,
+                       UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "UART pins unavailable: %s", esp_err_to_name(err));
+        return err;
+    }
 
-    ESP_ERROR_CHECK(uart_driver_install(s_uart, cfg->rx_buf_size, 0, 0, NULL, 0));
+    err = uart_driver_install(s_uart, cfg->rx_buf_size, 0, 0, NULL, 0);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "UART driver unavailable: %s", esp_err_to_name(err));
+        return err;
+    }
 
     xTaskCreate(gps_task, "gps_neo_m8n", cfg->task_stack, NULL, cfg->task_prio, NULL);
     ESP_LOGI(TAG, "GPS init uart=%d tx=%d rx=%d baud=%d", cfg->uart_num, cfg->tx_gpio, cfg->rx_gpio, cfg->baud);

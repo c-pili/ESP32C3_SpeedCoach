@@ -30,6 +30,7 @@
 #include "app/app_time.h"
 
 static const char *TAG = "app";
+static bool s_ui_ready;
 
 #define LOG_QUEUE_LEN 32
 
@@ -37,6 +38,7 @@ static esp_err_t web_configure_workout(const wifi_workout_config_t *config)
 {
     if (!config || s_activity_recording) return ESP_ERR_INVALID_STATE;
     s_workout_config = *config;
+    if (!s_ui_ready) return ESP_OK;
     if (config->display_preset == 2) {
         ui_go_to_page(UI_PAGE_ACCELERATION, false);
     } else if (config->display_preset == 0) {
@@ -61,18 +63,24 @@ static esp_err_t web_start_activity(void)
 
 void app_main(void)
 {
+    /* The ESP-IDF Wi-Fi driver stores calibration/configuration in NVS. */
+    ESP_ERROR_CHECK(nvs_helper_init());
+
     /* Bring up the AP before touching optional peripherals. This keeps the
-     * configuration page reachable even when an IMU, GPS or RTC is absent. */
+     * configuration page reachable even when an IMU, GPS, RTC or LCD is absent. */
     esp_err_t ap_err = wifi_export_start();
     if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
 
-    init_display_and_lvgl();
+    esp_err_t display_err = init_display_and_lvgl();
+    const bool ui_ready = (display_err == ESP_OK);
+    s_ui_ready = ui_ready;
     /* The IMU is optional during bench setup. init_imu logs failures and the
      * stroke task will report unavailable samples without stopping the AP. */
     init_imu();
-    PCF85063_init(&s_imu_bus);
-    ESP_ERROR_CHECK(nvs_helper_init());
-    ESP_ERROR_CHECK(sensor_hub_init());
+    if (s_imu_bus.bus) (void)PCF85063_init(&s_imu_bus);
+    esp_err_t sensor_err = sensor_hub_init();
+    if (sensor_err != ESP_OK)
+        ESP_LOGW(TAG, "BLE sensors unavailable: %s", esp_err_to_name(sensor_err));
 
     gps_neo_m8n_config_t gps_cfg = {
         .uart_num = UART_NUM_1,
@@ -83,8 +91,10 @@ void app_main(void)
         .task_stack = 4096,
         .rx_buf_size = 2048,
     };
-    ESP_ERROR_CHECK(gps_neo_m8n_init(&gps_cfg));
-    ESP_ERROR_CHECK(gps_neo_m8n_set_callback(gps_fix_cb, NULL));
+    esp_err_t gps_err = gps_neo_m8n_init(&gps_cfg);
+    if (gps_err == ESP_OK) gps_err = gps_neo_m8n_set_callback(gps_fix_cb, NULL);
+    if (gps_err != ESP_OK)
+        ESP_LOGW(TAG, "GPS unavailable: %s; Wi-Fi remains enabled", esp_err_to_name(gps_err));
 
     app_set_time_from_rtc();
 
@@ -102,18 +112,20 @@ void app_main(void)
 
     xTaskCreate(activity_logger_task, "activity_logger", 6144, NULL, 6, NULL);
     xTaskCreate(activity_worker_task, "activity_worker", 8192, NULL, 9, &s_act_worker_task);
-    /* Create UI in separate module */
-    ui_init(s_disp);
+    if (ui_ready) {
+        /* Create UI in separate module */
+        ui_init(s_disp);
 
-    /* Fixed dashboard metrics for button-only operation. */
-    const data_metric_t metrics[] = {
-        DATA_METRIC_PACE,
-        DATA_METRIC_TIME,
-        DATA_METRIC_SPM,
-        DATA_METRIC_HR,
-        DATA_METRIC_DISTANCE,
-    };
-    data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
+        /* Fixed dashboard metrics for button-only operation. */
+        const data_metric_t metrics[] = {
+            DATA_METRIC_PACE,
+            DATA_METRIC_TIME,
+            DATA_METRIC_SPM,
+            DATA_METRIC_HR,
+            DATA_METRIC_DISTANCE,
+        };
+        data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
+    }
     wifi_export_set_callbacks(web_configure_workout, web_start_activity,
                               ui_status_bar_read_battery_percent);
 
@@ -123,17 +135,19 @@ void app_main(void)
         ESP_LOGW(TAG, "Flash activity storage mount failed: %s", esp_err_to_name(storage_err));
     }
     bool saved_dark = nvs_helper_get_dark_mode();
-    ui_set_dark_mode(saved_dark);
+    if (ui_ready) ui_set_dark_mode(saved_dark);
     /* The 400x240 memory LCD is landscape and the one-button UI has no
      * orientation control, so keep the physical panel in landscape. */
-    ui_set_orientation(UI_ORIENT_LANDSCAPE_270);
+    if (ui_ready) ui_set_orientation(UI_ORIENT_LANDSCAPE_270);
     uint32_t saved_split = nvs_helper_get_split_len();
     s_current_split_m = saved_split;
     activity_log_init(&s_act_log);
     activity_log_set_split_interval(&s_act_log, saved_split);
 
-    ui_register_dark_mode_cb(on_dark_mode_setting_changed);
-    ui_register_auto_rotate_cb(on_auto_rotate_setting_changed);
+    if (ui_ready) {
+        ui_register_dark_mode_cb(on_dark_mode_setting_changed);
+        ui_register_auto_rotate_cb(on_auto_rotate_setting_changed);
+    }
 
     app_pwr_key_setup();
 

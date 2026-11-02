@@ -8,19 +8,31 @@
 
 static const char *TAG = "app";
 
-void init_display_and_lvgl(void)
+esp_err_t init_display_and_lvgl(void)
 {
     ESP_LOGI(TAG, "Init Sharp LS027B7DH01 monochrome memory LCD...");
-    ESP_ERROR_CHECK(lcd_sharp_ls027_init());
+    esp_err_t err = lcd_sharp_ls027_init();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "LCD unavailable (%s); continuing without local display", esp_err_to_name(err));
+        return err;
+    }
 
     ESP_LOGI(TAG, "Init LVGL port...");
     lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     lvgl_cfg.task_stack = 12288; /* Sharp 400x240 UI plus status and history pages. */
-    ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
+    err = lvgl_port_init(&lvgl_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "LVGL unavailable (%s); continuing without local display", esp_err_to_name(err));
+        return err;
+    }
 
     ESP_LOGI(TAG, "Add LVGL display with RGB565-to-monochrome flush...");
     s_disp = lcd_sharp_ls027_add_lvgl_display();
-    ESP_ERROR_CHECK(s_disp ? ESP_OK : ESP_ERR_NO_MEM);
+    if (!s_disp) {
+        ESP_LOGW(TAG, "LVGL display allocation failed; continuing without local display");
+        return ESP_ERR_NO_MEM;
+    }
     lv_disp_set_default(s_disp);
+    return ESP_OK;
 }
 

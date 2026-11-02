@@ -1,3 +1,4 @@
 #pragma once
+#include "esp_err.h"
 
-void init_display_and_lvgl(void);
+esp_err_t init_display_and_lvgl(void);

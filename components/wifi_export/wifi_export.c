@@ -182,7 +182,12 @@ esp_err_t wifi_export_start(void)
     if (err != ESP_OK) return err;
     httpd_config_t http_config = HTTPD_DEFAULT_CONFIG();
     err = httpd_start(&s_server, &http_config);
-    if (err != ESP_OK) { esp_wifi_stop(); return err; }
+    if (err != ESP_OK) {
+        /* Keep the AP running so a bare-board Wi-Fi test can still see it;
+         * report that HTTP is unavailable without tearing down the radio. */
+        ESP_LOGE(TAG, "HTTP server start failed; AP remains active: %s", esp_err_to_name(err));
+        return err;
+    }
     httpd_uri_t index = {.uri = "/", .method = HTTP_GET, .handler = index_handler};
     httpd_uri_t download = {.uri = "/download", .method = HTTP_GET, .handler = download_handler};
     httpd_uri_t status = {.uri = "/api/status", .method = HTTP_GET, .handler = status_handler};
