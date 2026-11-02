@@ -111,6 +111,17 @@ static bool is_primary_hr_watch(const char *name)
     return *name == '\0' && *target == '\0';
 }
 
+static bool adv_name_is_primary_hr_watch(const uint8_t *name, uint8_t name_len)
+{
+    static const char target[] = "Suunto Watch HR 1029";
+    if (!name || name_len != sizeof(target) - 1) return false;
+    for (size_t i = 0; i < name_len; i++) {
+        if (tolower((unsigned char)name[i]) != tolower((unsigned char)target[i]))
+            return false;
+    }
+    return true;
+}
+
 static void copy_name(char *dst, size_t dst_len, const uint8_t *name, uint8_t name_len)
 {
     if (!dst || dst_len == 0) {
@@ -299,6 +310,11 @@ static sensor_kind_t classify(const struct ble_hs_adv_fields *fields)
 {
     bool hr = false;
     bool pod = false;
+    /* Some Suunto firmware omits the standard HRS UUID from the advertising
+     * packet. The exact owner name is sufficient to try GATT discovery. */
+    if (adv_name_is_primary_hr_watch(fields->name, fields->name_len)) {
+        hr = true;
+    }
     for (uint8_t i = 0; i < fields->num_uuids16; i++) {
         if (fields->uuids16[i].value == UUID_HRS) {
             hr = true;
