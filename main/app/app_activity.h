@@ -12,3 +12,4 @@ typedef enum
 void activity_worker_task(void *arg);
 void activity_logger_task(void *arg);
 esp_err_t app_activity_post_cmd(act_cmd_t cmd);
+void app_activity_monitor_targets(void);

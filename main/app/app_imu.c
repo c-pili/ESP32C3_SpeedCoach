@@ -174,7 +174,6 @@ void stroke_task(void *arg)
 
     ui_orientation_t last_orient = s_current_orient;
     int stable_count = 0;
-    bool auto_stop_queued = false;
 
     while (1)
     {
@@ -430,21 +429,6 @@ void stroke_task(void *arg)
 
 
             bool recording = s_activity_recording;
-            if (!recording) auto_stop_queued = false;
-            if (recording && !auto_stop_queued) {
-                bool reached = false;
-                if (s_workout_config.mode == WIFI_WORKOUT_TIME)
-                    reached = s_session_time_s >= (float)s_workout_config.duration_s;
-                else if (s_workout_config.mode == WIFI_WORKOUT_DISTANCE)
-                    reached = s_activity.distance_m >= (float)s_workout_config.distance_m;
-                else if (s_workout_config.mode == WIFI_WORKOUT_INTERVAL)
-                    reached = s_session_time_s >= (float)(s_workout_config.interval_work_s +
-                                                           s_workout_config.interval_rest_s) *
-                                                          (float)s_workout_config.interval_reps;
-                if (reached && app_activity_post_cmd(ACT_CMD_STOP_SAVE) == ESP_OK)
-                    auto_stop_queued = true;
-            }
-
             TickType_t now = xTaskGetTickCount();
             bool catch_ui = (ev == STROKE_EVENT_CATCH);
             if (catch_ui || (now - last_ui_tick) >= ui_period)

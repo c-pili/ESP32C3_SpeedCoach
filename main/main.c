@@ -76,13 +76,11 @@ void app_main(void)
     esp_err_t ap_err = wifi_export_start();
     if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
 
-    /* A bare board has no IMU and does not need the full coach stack. Staying
-     * in this small mode preserves heap for Wi-Fi association and HTTP. */
-    if (!init_imu()) {
-        ESP_LOGW(TAG, "MPU6050 absent: keeping Wi-Fi setup/export active in bench mode");
-        wifi_export_set_callbacks(NULL, NULL, NULL, ui_status_bar_read_battery_percent);
-        while (1) vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    /* The UI, web setup and BLE heart-rate link remain usable without the IMU.
+     * Only stroke metrics and the acceleration graph require that sensor. */
+    const bool imu_ready = init_imu();
+    if (!imu_ready)
+        ESP_LOGW(TAG, "MPU6050 absent: starting full UI/BLE/Wi-Fi mode; stroke metrics unavailable");
 
     if (s_imu_bus.bus) (void)PCF85063_init(&s_imu_bus);
     esp_err_t sensor_err = sensor_hub_init();
@@ -164,23 +162,25 @@ void app_main(void)
 
     /* Created last, so it competes for whatever internal DRAM is left after
      * LVGL/BLE. A silent pdFAIL here kills SPM with no other symptom. */
-    BaseType_t stroke_ok = xTaskCreatePinnedToCore(stroke_task, "stroke",
-                                                   6144, NULL, 3, NULL, 0);
-    if (stroke_ok != pdPASS)
-    {
-        ESP_LOGE(TAG, "stroke task create FAILED, free internal=%u largest=%u",
-                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-    }
-    else
-    {
-        ESP_LOGI(TAG, "stroke task started, free internal=%u",
-                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    if (imu_ready) {
+        BaseType_t stroke_ok = xTaskCreatePinnedToCore(stroke_task, "stroke",
+                                                       6144, NULL, 3, NULL, 0);
+        if (stroke_ok != pdPASS) {
+            ESP_LOGE(TAG, "stroke task create FAILED, free internal=%u largest=%u",
+                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+        } else {
+            ESP_LOGI(TAG, "stroke task started, free internal=%u",
+                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        }
+    } else {
+        ESP_LOGW(TAG, "Stroke task skipped; timed/free web sessions remain available");
     }
 
     /* app_main can idle */
     while (1)
     {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        app_activity_monitor_targets();
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }

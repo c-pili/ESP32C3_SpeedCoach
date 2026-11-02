@@ -1,6 +1,6 @@
 # Export Wi-Fi des entraînements
 
-Au démarrage, le SpeedCoach initialise NVS, puis crée le réseau `SpeedCoach_Wi-Fi` (mot de passe `SpeedCoach`) avant l'écran et les capteurs. Sans MPU6050 détecté, le firmware reste en mode test léger pour préserver la mémoire et maintenir le point d'accès. La page `http://192.168.4.1` reste disponible pour vérifier la liaison Wi-Fi ; les fonctions de séance nécessitent le montage complet.
+Au démarrage, le SpeedCoach initialise NVS, puis crée le réseau `SpeedCoach_Wi-Fi` (mot de passe `SpeedCoach`) avant l'écran et les capteurs. Sans MPU6050, l'interface, le BLE, les séances libres/chronométrées et le suivi GPS restent disponibles ; seuls les coups et la courbe d'accélération sont indisponibles. Les séances distance nécessitent le GPS, et toute sauvegarde nécessite que SPIFFS soit monté.
 
 Avant une séance, la page permet de choisir Libre, Temps unique, Distance unique ou Intervalles, puis l'affichage du coach : allure, vitesse ou courbe d'accélération en direct. Le formulaire permet de démarrer la séance depuis le téléphone. Les séances à temps et distance s'arrêtent à leur objectif ; les intervalles s'arrêtent après le nombre de répétitions configuré. La courbe dépend du MPU6050 et n'affichera pas de données si le capteur est absent. La connexion BLE au **Suunto Watch HR 1029** démarre automatiquement au lancement : les autres montres sont ignorées. La page indique la recherche, la reconnexion, l'état connecté et le BPM reçu (si la montre transmet une mesure).
 

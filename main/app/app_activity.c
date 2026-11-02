@@ -9,9 +9,11 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs_helper.h"
+#include "gps_neo_m8n.h"
 #include "ui.h"
 #include "ui_data_page.h"
 #include <stdio.h>
+#include <math.h>
 #include <time.h>
 
 static bool start_activity_log(uint32_t id)
@@ -192,6 +194,51 @@ esp_err_t app_activity_post_cmd(act_cmd_t cmd)
     if (xQueueSend(s_act_q, &cmd, 0) != pdTRUE)
         return ESP_ERR_TIMEOUT;
     return ESP_OK;
+}
+
+void app_activity_monitor_targets(void)
+{
+    static bool stop_queued;
+    static int64_t last_tick_us;
+    int64_t now_us = esp_timer_get_time();
+    float dt_s = last_tick_us > 0 ? (float)(now_us - last_tick_us) * 1e-6f : 0.1f;
+    last_tick_us = now_us;
+    if (dt_s < 0.0f) dt_s = 0.0f;
+    if (dt_s > 0.5f) dt_s = 0.5f;
+
+    if (!s_activity_recording) {
+        stop_queued = false;
+        return;
+    }
+
+    bool reached = false;
+    if (s_activity_mutex) xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
+    s_session_time_s = s_session_last_us > 0
+        ? (float)(now_us - s_session_last_us) * 1e-6f : 0.0f;
+    s_activity.duration_ms = (uint32_t)(s_session_time_s * 1000.0f);
+    /* With no MPU6050, retain GPS distance/speed tracking so free and
+     * distance-target sessions still work. Stroke metrics stay unavailable. */
+    if (!s_imu.dev) {
+        gps_fix_t fix = {0};
+        bool speed_valid = gps_neo_m8n_get_latest(&fix) && fix.valid_fix &&
+                           (now_us - fix.rx_time_us) < 2000000 && isfinite(fix.speed_mps);
+        float speed_mps = speed_valid && fix.speed_mps > 0.0f ? fix.speed_mps : 0.0f;
+        (void)activity_update(&s_activity, dt_s, speed_mps, 0.0f, 0.0f,
+                              speed_valid ? speed_mps * dt_s : 0.0f,
+                              0, speed_valid, false);
+    }
+    if (s_workout_config.mode == WIFI_WORKOUT_TIME)
+        reached = s_session_time_s >= (float)s_workout_config.duration_s;
+    else if (s_workout_config.mode == WIFI_WORKOUT_DISTANCE)
+        reached = s_activity.distance_m >= (float)s_workout_config.distance_m;
+    else if (s_workout_config.mode == WIFI_WORKOUT_INTERVAL)
+        reached = s_session_time_s >= (float)(s_workout_config.interval_work_s +
+                                               s_workout_config.interval_rest_s) *
+                                      (float)s_workout_config.interval_reps;
+    if (s_activity_mutex) xSemaphoreGive(s_activity_mutex);
+
+    if (reached && !stop_queued && app_activity_post_cmd(ACT_CMD_STOP_SAVE) == ESP_OK)
+        stop_queued = true;
 }
 
 void activity_logger_task(void *arg)
