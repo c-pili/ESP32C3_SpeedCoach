@@ -20,6 +20,7 @@ typedef enum {
     UI_SETTINGS_PAGE,
     UI_ACTIVITY_DETAIL_PAGE,
     UI_SENSORS_PAGE,
+    UI_PAGE_ACCELERATION,
     UI_PAGE_COUNT,
 } ui_page_t;
 

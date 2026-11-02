@@ -19,6 +19,7 @@
 #include "ui.h"
 #include "ui_data_page.h"
 #include "ui_settings_page.h"
+#include "ui/settings/ui_status_bar.h"
 
 #include "app/app_activity.h"
 #include "app/app_context.h"
@@ -32,9 +33,42 @@ static const char *TAG = "app";
 
 #define LOG_QUEUE_LEN 32
 
+static esp_err_t web_configure_workout(const wifi_workout_config_t *config)
+{
+    if (!config || s_activity_recording) return ESP_ERR_INVALID_STATE;
+    s_workout_config = *config;
+    if (config->display_preset == 2) {
+        ui_go_to_page(UI_PAGE_ACCELERATION, false);
+    } else if (config->display_preset == 0) {
+        const data_metric_t metrics[] = {DATA_METRIC_PACE, DATA_METRIC_TIME, DATA_METRIC_SPM,
+                                         DATA_METRIC_DISTANCE, DATA_METRIC_HR};
+        data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
+    } else {
+        const data_metric_t metrics[] = {DATA_METRIC_SPEED, DATA_METRIC_TIME, DATA_METRIC_SPM,
+                                         DATA_METRIC_DISTANCE, DATA_METRIC_HR};
+        data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
+    }
+    if (config->display_preset != 2 && ui_get_current_page() == UI_PAGE_ACCELERATION)
+        ui_go_to_page(UI_PAGE_DATA, false);
+    return ESP_OK;
+}
+
+static esp_err_t web_start_activity(void)
+{
+    if (s_activity_recording) return ESP_ERR_INVALID_STATE;
+    return app_activity_post_cmd(ACT_CMD_START);
+}
+
 void app_main(void)
 {
+    /* Bring up the AP before touching optional peripherals. This keeps the
+     * configuration page reachable even when an IMU, GPS or RTC is absent. */
+    esp_err_t ap_err = wifi_export_start();
+    if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
+
     init_display_and_lvgl();
+    /* The IMU is optional during bench setup. init_imu logs failures and the
+     * stroke task will report unavailable samples without stopping the AP. */
     init_imu();
     PCF85063_init(&s_imu_bus);
     ESP_ERROR_CHECK(nvs_helper_init());
@@ -80,15 +114,14 @@ void app_main(void)
         DATA_METRIC_DISTANCE,
     };
     data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
+    wifi_export_set_callbacks(web_configure_workout, web_start_activity,
+                              ui_status_bar_read_battery_percent);
 
     esp_err_t storage_err = flash_storage_mount(&s_storage);
     if (storage_err != ESP_OK)
     {
         ESP_LOGW(TAG, "Flash activity storage mount failed: %s", esp_err_to_name(storage_err));
     }
-    esp_err_t ap_err = wifi_export_start();
-    if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
-
     bool saved_dark = nvs_helper_get_dark_mode();
     ui_set_dark_mode(saved_dark);
     /* The 400x240 memory LCD is landscape and the one-button UI has no

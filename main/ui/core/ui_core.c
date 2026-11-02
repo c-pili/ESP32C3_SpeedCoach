@@ -13,6 +13,7 @@
 #include "ui_settings_page.h"
 #include "ui_sensors_page.h"
 #include "ui_theme.h"
+#include "ui_acceleration_page.h"
 
 #include <math.h>
 #include <string.h>
@@ -40,6 +41,7 @@ static void snapshot_idle(coach_ui_snapshot_t *snap)
     snap->pace_s_per_500m = NAN;
     snap->avg_pace_s_per_500m = NAN;
     snap->speed_mps = NAN;
+    snap->acceleration_mps2 = NAN;
     snap->spm = NAN;
     snap->stroke_len_m = NAN;
     snap->split_progress_m = NAN;
@@ -76,6 +78,7 @@ static void coach_ui_tick(lv_timer_t *t)
         snapshot_idle(&snap);
     }
     overlay_session_time(&snap);
+    acceleration_page_add_sample(snap.acceleration_mps2);
 
     bool full = !s_applied_once || (copied && snap.seq != s_applied_seq);
     if (full) {
@@ -95,9 +98,11 @@ static void coach_ui_tick(lv_timer_t *t)
         return;
     }
 
-    bool dim = s_auto_dim && snap.recording &&
-               (lv_disp_get_inactive_time(NULL) > 15000);
-    if (dim) {
+    /* The Sharp memory LCD has no backlight to dim. Blank it after 45 minutes
+     * of idle time, but keep it visible for the whole activity. */
+    bool idle_sleep = !snap.recording &&
+                      (lv_disp_get_inactive_time(NULL) >= 45u * 60u * 1000u);
+    if (idle_sleep) {
         s_display_sleep = true;
         apply_backlight(0);
         return;

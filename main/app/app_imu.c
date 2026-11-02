@@ -13,6 +13,7 @@
 #include "mpu6050.h"
 #include "sensor_hub.h"
 #include "stroke_detection.h"
+#include "wifi_export.h"
 
 #include <time.h>
 #include <string.h>
@@ -93,13 +94,21 @@ void init_imu(void)
 {
     ESP_LOGI(TAG, "Init IMU I2C bus + MPU6050...");
 
-    ESP_ERROR_CHECK(i2c_helper_init(&s_imu_bus,
+    esp_err_t err = i2c_helper_init(&s_imu_bus,
                                     IMU_I2C_PORT,
                                     IMU_SDA_GPIO,
                                     IMU_SCL_GPIO,
-                                    IMU_I2C_CLK));
-
-    ESP_ERROR_CHECK(mpu6050_init(&s_imu, &s_imu_bus, CONFIG_IMU_MPU6050_ADDR));
+                                    IMU_I2C_CLK);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "IMU I2C unavailable (%s); Wi-Fi setup remains available", esp_err_to_name(err));
+        memset(&s_imu, 0, sizeof(s_imu));
+        return;
+    }
+    err = mpu6050_init(&s_imu, &s_imu_bus, CONFIG_IMU_MPU6050_ADDR);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "MPU6050 unavailable (%s); Wi-Fi setup remains available", esp_err_to_name(err));
+        memset(&s_imu, 0, sizeof(s_imu));
+    }
 }
 
 void stroke_task(void *arg)
@@ -163,6 +172,7 @@ void stroke_task(void *arg)
 
     ui_orientation_t last_orient = s_current_orient;
     int stable_count = 0;
+    bool auto_stop_queued = false;
 
     while (1)
     {
@@ -179,7 +189,7 @@ void stroke_task(void *arg)
         }
 
         float ax, ay, az, gx, gy, gz;
-        if (mpu6050_read_accel_gyro(&s_imu, &ax, &ay, &az, &gx, &gy, &gz) == ESP_OK)
+        if (s_imu.dev && mpu6050_read_accel_gyro(&s_imu, &ax, &ay, &az, &gx, &gy, &gz) == ESP_OK)
         {
             int64_t now_us = esp_timer_get_time();
             float t_s = (float)(now_us - t0_us) * 1e-6f;
@@ -418,6 +428,20 @@ void stroke_task(void *arg)
 
 
             bool recording = s_activity_recording;
+            if (!recording) auto_stop_queued = false;
+            if (recording && !auto_stop_queued) {
+                bool reached = false;
+                if (s_workout_config.mode == WIFI_WORKOUT_TIME)
+                    reached = s_session_time_s >= (float)s_workout_config.duration_s;
+                else if (s_workout_config.mode == WIFI_WORKOUT_DISTANCE)
+                    reached = s_activity.distance_m >= (float)s_workout_config.distance_m;
+                else if (s_workout_config.mode == WIFI_WORKOUT_INTERVAL)
+                    reached = s_session_time_s >= (float)(s_workout_config.interval_work_s +
+                                                           s_workout_config.interval_rest_s) *
+                                                          (float)s_workout_config.interval_reps;
+                if (reached && app_activity_post_cmd(ACT_CMD_STOP_SAVE) == ESP_OK)
+                    auto_stop_queued = true;
+            }
 
             TickType_t now = xTaskGetTickCount();
             bool catch_ui = (ev == STROKE_EVENT_CATCH);
@@ -453,6 +477,7 @@ void stroke_task(void *arg)
                     .pace_s_per_500m = recording ? pace : NAN,
                     .avg_pace_s_per_500m = recording ? avg_pace_s : NAN,
                     .speed_mps = recording ? speed_mps : NAN,
+                    .acceleration_mps2 = m.a_long,
                     .spm = spm_disp,
                     .stroke_len_m = stroke_len_disp,
                     .stroke_count = recording ? s_activity.stroke_count : UINT32_MAX,
@@ -478,7 +503,8 @@ void stroke_task(void *arg)
             s_imu_fail++;
             if ((s_imu_fail % 50u) == 1u) {
                 ESP_LOGW(TAG, "IMU read failed (%lu)", (unsigned long)s_imu_fail);
-                (void)i2c_helper_bus_reset(&s_imu_bus);
+                if (s_imu_bus.bus)
+                    (void)i2c_helper_bus_reset(&s_imu_bus);
             }
         }
 

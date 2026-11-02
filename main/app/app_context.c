@@ -16,6 +16,7 @@ SemaphoreHandle_t s_activity_mutex = NULL;
 QueueHandle_t s_log_q = NULL;
 activity_log_t s_act_log;
 uint32_t s_current_split_m = 1000;
+wifi_workout_config_t s_workout_config = {.mode = WIFI_WORKOUT_FREE};
 
 lv_disp_t *s_disp = NULL;
 

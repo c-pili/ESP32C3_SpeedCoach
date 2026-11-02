@@ -33,6 +33,7 @@ typedef struct {
     float pace_s_per_500m;
     float avg_pace_s_per_500m;
     float speed_mps;
+    float acceleration_mps2;
     float spm;
     float stroke_len_m;
     uint32_t stroke_count;

@@ -7,6 +7,7 @@ lv_obj_t *ui_s_page_settings = NULL;
 lv_obj_t *ui_s_page_menu = NULL;
 lv_obj_t *ui_s_page_activity_summary = NULL;
 lv_obj_t *ui_s_page_activity_detail = NULL;
+lv_obj_t *ui_s_page_acceleration = NULL;
 lv_obj_t *ui_s_page_sensors = NULL;
 
 

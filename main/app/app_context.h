@@ -13,6 +13,7 @@
 #include "storage_paths.h"
 #include "stroke_detection.h"
 #include "ui.h"
+#include "wifi_export.h"
 
 extern activity_storage_t s_storage;
 extern QueueHandle_t s_act_q;
@@ -28,6 +29,7 @@ extern SemaphoreHandle_t s_activity_mutex;
 extern QueueHandle_t s_log_q;
 extern activity_log_t s_act_log;
 extern uint32_t s_current_split_m;
+extern wifi_workout_config_t s_workout_config;
 
 extern lv_disp_t *s_disp;
 

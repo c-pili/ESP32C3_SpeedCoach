@@ -10,14 +10,15 @@ Firmware slug: `esp32c3_speed_coach`.
 
 | Feature | Description |
 |--------|-------------|
-| Fixed live dashboard | Pace `/500 m`, elapsed time, stroke rate (SPM), distance, and heart rate (bpm) always visible |
+| Live display | Select pace, speed, or a live longitudinal acceleration graph from the Wi-Fi page |
 | Split logging | CSV summaries at the configured distance (1000 m by default) |
 | GPS speed & distance | Instant and average pace from NEO-M8N GNSS over UART1; stale GPS is flagged and does not zero averages |
 | Stroke detection | Count, SPM, drive/recovery times from MPU6050 over I2C |
 | Activity logging | Stroke CSV, split CSV, and TCX files stored in the ESP32-C3 SPIFFS partition |
-| Activity export | Automatic Wi-Fi AP while idle; download TCX from `http://192.168.4.1` |
+| Workout setup | Web selection for free, timed, distance, or interval sessions; timed and distance targets stop automatically |
+| Wi-Fi setup and export | AP starts at boot before sensor initialization; configure the coach and download TCX at `http://192.168.4.1` |
 | Physical control | One PWR button starts/stops and saves a standard activity; a 5-second hold saves then powers off |
-| Reflective display | No backlight; Sharp memory-LCD VCOM is maintained at 1 Hz and the screen remains visible during activity |
+| Reflective display | No backlight; Sharp memory-LCD VCOM is maintained at 1 Hz; the display sleeps after 45 minutes without user activity and stays awake while recording |
 | BLE heart rate | Automatically discovers a Suunto HR broadcaster on first boot, saves it, and reconnects on later boots; live bpm is always on the dashboard |
 | BLE RowPod | Optional paired motion-pod telemetry is logged when connected; see [docs/ble_sensors.md](docs/ble_sensors.md) |
 
@@ -27,9 +28,11 @@ Firmware slug: `esp32c3_speed_coach`.
 - **PWR hold** (5 seconds): save an active activity, then power off
 - To provide bpm, enable **Heart Rate Broadcast** in the Suunto sport-mode settings and start that sport mode; the Speed Coach scans for the standard BLE heart-rate service and remembers the Suunto device
 
-## Not in this firmware (see [docs/ui_refinement.md](docs/ui_refinement.md))
+## Hardware notes
 
-BLE power sensors, peer link mode, interval workouts, race pacing, step tests, and sport profiles are not included in this firmware.
+The Wi-Fi access point is initialized before optional sensors. The MPU6050 may be absent during bench setup; stroke metrics and the acceleration graph then remain unavailable, while the web page and activity export can still be used. GPS and heart-rate readings likewise require their corresponding hardware.
+
+Battery percentage is measured through the ADC divider on GPIO2 and is only meaningful when the board's battery and divider are connected and calibrated. This firmware has no configured charger status input, so it cannot reliably tell whether the battery is currently charging.
 
 ---
 
@@ -58,7 +61,7 @@ idf.py build
 idf.py flash monitor
 ```
 
-For activity export, connect to `SpeedCoach_Wi-Fi` (password `SpeedCoach`) while no activity is recording, then open `http://192.168.4.1`. See [docs/WIFI_EXPORT.md](docs/WIFI_EXPORT.md) for the one-time SPIFFS initialization step.
+For Wi-Fi setup and activity export, connect to `SpeedCoach_Wi-Fi` (password `SpeedCoach`) and open `http://192.168.4.1`. The access point is intended to start at boot and is stopped during activity recording. See [docs/WIFI_EXPORT.md](docs/WIFI_EXPORT.md) for troubleshooting and the one-time SPIFFS initialization step.
 
 Landscape 400×240 is the reference layout. After a UI/font change run `idf.py size-components` and note free heap / LVGL stack high-water mark. Do not enable PSRAM just to hide RAM cost.
 

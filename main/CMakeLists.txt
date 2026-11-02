@@ -15,6 +15,7 @@ idf_component_register(
         "ui/core/ui_typography.c"
         "ui/core/ui_format.c"
         "ui/core/coach_ui_snapshot.c"
+        "ui/core/ui_acceleration_page.c"
         "ui/settings/ui_settings_page.c"
         "ui/data/ui_data_page.c"
         "ui/settings/ui_status_bar.c"

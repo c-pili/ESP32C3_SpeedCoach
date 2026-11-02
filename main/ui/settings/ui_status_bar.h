@@ -3,6 +3,7 @@
 #include "lvgl.h"
 #include "ui.h"
 #include "coach_ui_snapshot.h"
+#include "esp_err.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -59,3 +60,4 @@ void ui_status_bar_set_gps_default_safe(bool connected, uint8_t bars_0_to_4);
 void ui_status_bar_set_default(ui_status_bar_t *bar);
 
 void ui_status_bar_apply_snapshot(const coach_ui_snapshot_t *snap);
+esp_err_t ui_status_bar_read_battery_percent(int *percent);

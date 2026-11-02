@@ -133,6 +133,16 @@ void ui_pages_relayout(void)
         }
     }
 
+    if (ui_s_page_acceleration)
+    {
+        lv_obj_set_size(ui_s_page_acceleration, lv_pct(100), lv_pct(100));
+        lv_obj_set_pos(ui_s_page_acceleration, 0, 0);
+        if (ui_s_current_page == UI_PAGE_ACCELERATION)
+            lv_obj_clear_flag(ui_s_page_acceleration, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(ui_s_page_acceleration, LV_OBJ_FLAG_HIDDEN);
+    }
+
     lv_obj_t *live_bar = ui_status_bar_root(&ui_s_live_status);
     if (live_bar)
     {
@@ -185,6 +195,8 @@ void ui_go_to_page(ui_page_t target, bool animated)
     if ((target == UI_ACTIVITY_SUMMARY_PAGE) && !ui_s_page_activity_summary)
         return;
     if ((target == UI_ACTIVITY_DETAIL_PAGE) && !ui_s_page_activity_detail)
+        return;
+    if ((target == UI_PAGE_ACCELERATION) && !ui_s_page_acceleration)
         return;
     lvgl_port_lock(0);
     if (target == UI_SENSORS_PAGE)

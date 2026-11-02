@@ -1,5 +1,14 @@
 # ESP-IDF build output
 /build/
+/cmake-build-*/
+
+# Local IDE state and machine-specific Espressif installer configuration
+/.idea/
+/eim_config.toml
+
+# Python-generated cache files
+__pycache__/
+*.py[cod]
 
 # Local ESP-IDF configuration
 /sdkconfig

@@ -135,6 +135,14 @@ static void status_bar_battery_init_once(void)
     }
 }
 
+esp_err_t ui_status_bar_read_battery_percent(int *percent)
+{
+    if (!percent) return ESP_ERR_INVALID_ARG;
+    status_bar_battery_init_once();
+    if (!s_bat) return ESP_ERR_INVALID_STATE;
+    return battery_drv_read_percent(s_bat, percent);
+}
+
 static void apply_gps_visual(ui_status_bar_t *bar)
 {
     if (!bar || !bar->gps_icon) {

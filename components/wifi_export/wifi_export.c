@@ -2,6 +2,7 @@
 
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -19,11 +20,23 @@ static const char *TAG = "wifi_export";
 static httpd_handle_t s_server;
 static bool s_wifi_initialized;
 static bool s_netif_initialized;
+static wifi_config_callback_t s_config_cb;
+static wifi_activity_callback_t s_activity_cb;
+static wifi_battery_callback_t s_battery_cb;
+
+void wifi_export_set_callbacks(wifi_config_callback_t config_cb,
+                               wifi_activity_callback_t start_cb,
+                               wifi_battery_callback_t battery_cb)
+{
+    s_config_cb = config_cb;
+    s_activity_cb = start_cb;
+    s_battery_cb = battery_cb;
+}
 
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
-    httpd_resp_sendstr_chunk(req, "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>SpeedCoach</title><h1>Entrainements SpeedCoach</h1><p>Choisissez un fichier TCX :</p><ul>");
+    httpd_resp_sendstr_chunk(req, "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>SpeedCoach</title><h1>SpeedCoach</h1><p>Batterie : <span id=b>lecture...</span></p><form action=/config><h2>Préparer une séance</h2><label>Type <select name=mode><option value=0>Libre</option><option value=1>Temps unique</option><option value=2>Distance unique</option><option value=3>Intervalles</option></select></label><p>Durée (min) <input name=duration type=number min=1 value=30></p><p>Distance (m) <input name=distance type=number min=1 value=1000></p><p>Travail (s) <input name=work type=number min=1 value=60></p><p>Repos (s) <input name=rest type=number min=1 value=60></p><p>Répétitions <input name=reps type=number min=1 value=8></p><label>Affichage <select name=display><option value=0>Allure, temps, cadence, distance</option><option value=1>Vitesse, temps, cadence, distance</option><option value=2>Courbe d'accélération en direct</option></select></label><p><button>Enregistrer la séance</button></p></form><p><a href=/start>Démarrer cette séance</a></p><script>fetch('/api/status').then(r=>r.json()).then(x=>document.getElementById('b').textContent=x.battery_pct===null?'indisponible':x.battery_pct+' %'+(x.charging===null?' (charge inconnue)':x.charging?' (en charge)':''));</script><h2>Activités enregistrées</h2><p>Choisissez un fichier TCX :</p><ul>");
     DIR *activities = opendir(ACTIVITY_DIR);
     if (activities) {
         struct dirent *activity;
@@ -46,6 +59,65 @@ static esp_err_t index_handler(httpd_req_t *req)
     }
     httpd_resp_sendstr_chunk(req, "</ul>");
     return httpd_resp_sendstr_chunk(req, NULL);
+}
+
+static esp_err_t status_handler(httpd_req_t *req)
+{
+    int pct = -1;
+    if (!s_battery_cb || s_battery_cb(&pct) != ESP_OK) pct = -1;
+    char body[80];
+    if (pct < 0) snprintf(body, sizeof(body), "{\"battery_pct\":null,\"charging\":null}");
+    else snprintf(body, sizeof(body), "{\"battery_pct\":%d,\"charging\":null}", pct);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, body);
+}
+
+static uint32_t query_uint(const char *query, const char *key, uint32_t fallback)
+{
+    char value[16];
+    if (httpd_query_key_value(query, key, value, sizeof(value)) != ESP_OK) return fallback;
+    char *end = NULL;
+    unsigned long parsed = strtoul(value, &end, 10);
+    return (end && *end == '\0' && parsed <= 86400ul) ? (uint32_t)parsed : fallback;
+}
+
+static esp_err_t config_handler(httpd_req_t *req)
+{
+    char query[256], response[128];
+    if (!s_config_cb || httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Configuration unavailable");
+        return ESP_FAIL;
+    }
+    wifi_workout_config_t cfg = {
+        .mode = (wifi_workout_mode_t)query_uint(query, "mode", 0),
+        .duration_s = query_uint(query, "duration", 30) * 60u,
+        .distance_m = query_uint(query, "distance", 1000),
+        .interval_work_s = query_uint(query, "work", 60),
+        .interval_rest_s = query_uint(query, "rest", 60),
+        .interval_reps = query_uint(query, "reps", 8),
+        .display_preset = (uint8_t)query_uint(query, "display", 0),
+    };
+    if (cfg.mode > WIFI_WORKOUT_INTERVAL || cfg.display_preset > 2 ||
+        (cfg.mode == WIFI_WORKOUT_TIME && cfg.duration_s == 0) ||
+        (cfg.mode == WIFI_WORKOUT_DISTANCE && cfg.distance_m == 0) ||
+        (cfg.mode == WIFI_WORKOUT_INTERVAL && (!cfg.interval_work_s || !cfg.interval_rest_s || !cfg.interval_reps))) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid configuration");
+        return ESP_FAIL;
+    }
+    esp_err_t err = s_config_cb(&cfg);
+    snprintf(response, sizeof(response), "<meta charset=utf-8><p>%s</p><a href='/'>Retour au SpeedCoach</a>",
+             err == ESP_OK ? "Séance enregistrée. Vous pouvez la démarrer." : "Impossible d'enregistrer la séance.");
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    return httpd_resp_sendstr(req, response);
+}
+
+static esp_err_t start_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    esp_err_t response_err = httpd_resp_sendstr(req,
+        "<meta charset=utf-8><p>Demande de démarrage envoyée. Le Wi-Fi se coupe pendant la séance.</p>");
+    if (response_err == ESP_OK && s_activity_cb) (void)s_activity_cb();
+    return response_err;
 }
 
 static esp_err_t download_handler(httpd_req_t *req)
@@ -113,8 +185,14 @@ esp_err_t wifi_export_start(void)
     if (err != ESP_OK) { esp_wifi_stop(); return err; }
     httpd_uri_t index = {.uri = "/", .method = HTTP_GET, .handler = index_handler};
     httpd_uri_t download = {.uri = "/download", .method = HTTP_GET, .handler = download_handler};
+    httpd_uri_t status = {.uri = "/api/status", .method = HTTP_GET, .handler = status_handler};
+    httpd_uri_t config = {.uri = "/config", .method = HTTP_GET, .handler = config_handler};
+    httpd_uri_t start = {.uri = "/start", .method = HTTP_GET, .handler = start_handler};
     httpd_register_uri_handler(s_server, &index);
     httpd_register_uri_handler(s_server, &download);
+    httpd_register_uri_handler(s_server, &status);
+    httpd_register_uri_handler(s_server, &config);
+    httpd_register_uri_handler(s_server, &start);
     ESP_LOGI(TAG, "AP started: %s (password: %s), http://192.168.4.1", AP_SSID, AP_PASSWORD);
     return ESP_OK;
 }

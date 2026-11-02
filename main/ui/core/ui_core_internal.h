@@ -13,6 +13,7 @@ extern lv_obj_t *ui_s_page_menu;
 extern lv_obj_t *ui_s_page_activity_summary;
 extern lv_obj_t *ui_s_page_activity_detail;
 extern lv_obj_t *ui_s_page_sensors;
+extern lv_obj_t *ui_s_page_acceleration;
 
 
 extern ui_page_t ui_s_current_page;
