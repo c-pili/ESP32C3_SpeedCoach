@@ -57,8 +57,13 @@ static esp_err_t web_configure_workout(const wifi_workout_config_t *config)
 
 static esp_err_t web_start_activity(void)
 {
-    if (s_activity_recording) return ESP_ERR_INVALID_STATE;
     return app_activity_post_cmd(ACT_CMD_START);
+}
+
+static esp_err_t web_activity_ready(void)
+{
+    if (s_activity_recording || !s_storage.mounted) return ESP_ERR_INVALID_STATE;
+    return ESP_OK;
 }
 
 void app_main(void)
@@ -75,17 +80,18 @@ void app_main(void)
      * in this small mode preserves heap for Wi-Fi association and HTTP. */
     if (!init_imu()) {
         ESP_LOGW(TAG, "MPU6050 absent: keeping Wi-Fi setup/export active in bench mode");
-        wifi_export_set_callbacks(NULL, NULL, ui_status_bar_read_battery_percent);
+        wifi_export_set_callbacks(NULL, NULL, NULL, ui_status_bar_read_battery_percent);
         while (1) vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    esp_err_t display_err = init_display_and_lvgl();
-    const bool ui_ready = (display_err == ESP_OK);
-    s_ui_ready = ui_ready;
     if (s_imu_bus.bus) (void)PCF85063_init(&s_imu_bus);
     esp_err_t sensor_err = sensor_hub_init();
     if (sensor_err != ESP_OK)
         ESP_LOGW(TAG, "BLE sensors unavailable: %s", esp_err_to_name(sensor_err));
+
+    esp_err_t display_err = init_display_and_lvgl();
+    const bool ui_ready = (display_err == ESP_OK);
+    s_ui_ready = ui_ready;
 
     gps_neo_m8n_config_t gps_cfg = {
         .uart_num = UART_NUM_1,
@@ -131,7 +137,7 @@ void app_main(void)
         };
         data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
     }
-    wifi_export_set_callbacks(web_configure_workout, web_start_activity,
+    wifi_export_set_callbacks(web_configure_workout, web_activity_ready, web_start_activity,
                               ui_status_bar_read_battery_percent);
 
     esp_err_t storage_err = flash_storage_mount(&s_storage);

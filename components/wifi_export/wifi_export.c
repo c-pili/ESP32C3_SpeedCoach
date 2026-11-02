@@ -13,6 +13,7 @@
 #include "esp_wifi.h"
 #include "esp_log.h"
 #include "storage_paths.h"
+#include "sensor_hub.h"
 
 #define AP_SSID "SpeedCoach_Wi-Fi"
 #define AP_PASSWORD "SpeedCoach"
@@ -21,14 +22,17 @@ static httpd_handle_t s_server;
 static bool s_wifi_initialized;
 static bool s_netif_initialized;
 static wifi_config_callback_t s_config_cb;
+static wifi_activity_ready_callback_t s_activity_ready_cb;
 static wifi_activity_callback_t s_activity_cb;
 static wifi_battery_callback_t s_battery_cb;
 
 void wifi_export_set_callbacks(wifi_config_callback_t config_cb,
+                               wifi_activity_ready_callback_t ready_cb,
                                wifi_activity_callback_t start_cb,
                                wifi_battery_callback_t battery_cb)
 {
     s_config_cb = config_cb;
+    s_activity_ready_cb = ready_cb;
     s_activity_cb = start_cb;
     s_battery_cb = battery_cb;
 }
@@ -36,7 +40,13 @@ void wifi_export_set_callbacks(wifi_config_callback_t config_cb,
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
-    httpd_resp_sendstr_chunk(req, "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>SpeedCoach</title><h1>SpeedCoach</h1><p>Batterie : <span id=b>lecture...</span></p><form action=/config><h2>Préparer une séance</h2><label>Type <select name=mode><option value=0>Libre</option><option value=1>Temps unique</option><option value=2>Distance unique</option><option value=3>Intervalles</option></select></label><p>Durée (min) <input name=duration type=number min=1 value=30></p><p>Distance (m) <input name=distance type=number min=1 value=1000></p><p>Travail (s) <input name=work type=number min=1 value=60></p><p>Repos (s) <input name=rest type=number min=1 value=60></p><p>Répétitions <input name=reps type=number min=1 value=8></p><label>Affichage <select name=display><option value=0>Allure, temps, cadence, distance</option><option value=1>Vitesse, temps, cadence, distance</option><option value=2>Courbe d'accélération en direct</option></select></label><p><button>Enregistrer la séance</button></p></form><p><a href=/start>Démarrer cette séance</a></p><script>fetch('/api/status').then(r=>r.json()).then(x=>document.getElementById('b').textContent=x.battery_pct===null?'indisponible':x.battery_pct+' %'+(x.charging===null?' (charge inconnue)':x.charging?' (en charge)':''));</script><h2>Activités enregistrées</h2><p>Choisissez un fichier TCX :</p><ul>");
+    httpd_resp_sendstr_chunk(req, "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>SpeedCoach</title><h1>SpeedCoach</h1><p>Batterie : <span id=b>lecture...</span></p>");
+    if (!s_config_cb || !s_activity_ready_cb || !s_activity_cb) {
+        httpd_resp_sendstr_chunk(req, "<p><b>Mode test Wi-Fi :</b> les fonctions de séance ne sont pas initialisées sur ce démarrage.</p>");
+    } else {
+        httpd_resp_sendstr_chunk(req, "<form action=/config><h2>Préparer une séance</h2><label>Type <select name=mode><option value=0>Libre</option><option value=1>Temps unique</option><option value=2>Distance unique</option><option value=3>Intervalles</option></select></label><p>Durée (min) <input name=duration type=number min=1 value=30></p><p>Distance (m) <input name=distance type=number min=1 value=1000></p><p>Travail (s) <input name=work type=number min=1 value=60></p><p>Repos (s) <input name=rest type=number min=1 value=60></p><p>Répétitions <input name=reps type=number min=1 value=8></p><label>Affichage <select name=display><option value=0>Allure, temps, cadence, distance</option><option value=1>Vitesse, temps, cadence, distance</option><option value=2>Courbe d'accélération en direct</option></select></label><p><button>Enregistrer la séance</button></p></form><p><a href=/start>Démarrer cette séance</a></p>");
+    }
+    httpd_resp_sendstr_chunk(req, "<p>Cardio : <span id=hr>vérification...</span></p><script>function refresh(){fetch('/api/status').then(r=>r.json()).then(x=>document.getElementById('b').textContent=x.battery_pct===null?'indisponible':x.battery_pct+' %'+(x.charging===null?' (charge inconnue)':x.charging?' (en charge)':''));fetch('/api/sensors').then(r=>r.json()).then(x=>document.getElementById('hr').textContent=!x.available?'Bluetooth indisponible':x.connected?(x.bpm===null?'Connecté, attente BPM':'Connecté · '+x.bpm+' bpm'):x.scanning?'Recherche du cardiofréquencemètre…':x.saved?'Capteur mémorisé · reconnexion en cours':'Aucun capteur connecté');}refresh();setInterval(refresh,2000);</script><h2>Activités enregistrées</h2><p>Choisissez un fichier TCX :</p><ul>");
     DIR *activities = opendir(ACTIVITY_DIR);
     if (activities) {
         struct dirent *activity;
@@ -68,6 +78,34 @@ static esp_err_t status_handler(httpd_req_t *req)
     char body[80];
     if (pct < 0) snprintf(body, sizeof(body), "{\"battery_pct\":null,\"charging\":null}");
     else snprintf(body, sizeof(body), "{\"battery_pct\":%d,\"charging\":null}", pct);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, body);
+}
+
+static esp_err_t sensors_handler(httpd_req_t *req)
+{
+    sensor_hub_slot_info_t slot = {0};
+    sensor_hub_live_t live = {0};
+    sensor_kind_t scanning_kind = SENSOR_KIND_COUNT;
+    bool scanning = sensor_hub_is_scanning(&scanning_kind) && scanning_kind == SENSOR_KIND_HR;
+    sensor_hub_get_slot(SENSOR_KIND_HR, &slot);
+    sensor_hub_get_live(&live);
+    char body[128];
+    if (live.hr_bpm) {
+        snprintf(body, sizeof(body),
+                 "{\"available\":%s,\"connected\":%s,\"saved\":%s,\"scanning\":%s,\"bpm\":%u}",
+                 sensor_hub_available() ? "true" : "false",
+                 live.hr_connected ? "true" : "false",
+                 slot.saved ? "true" : "false",
+                 scanning ? "true" : "false", (unsigned)live.hr_bpm);
+    } else {
+        snprintf(body, sizeof(body),
+                 "{\"available\":%s,\"connected\":%s,\"saved\":%s,\"scanning\":%s,\"bpm\":null}",
+                 sensor_hub_available() ? "true" : "false",
+                 live.hr_connected ? "true" : "false",
+                 slot.saved ? "true" : "false",
+                 scanning ? "true" : "false");
+    }
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, body);
 }
@@ -111,13 +149,37 @@ static esp_err_t config_handler(httpd_req_t *req)
     return httpd_resp_sendstr(req, response);
 }
 
+static void start_activity_work(void *arg)
+{
+    (void)arg;
+    esp_err_t err = s_activity_cb ? s_activity_cb() : ESP_ERR_INVALID_STATE;
+    if (err != ESP_OK)
+        ESP_LOGW(TAG, "Web activity start rejected: %s", esp_err_to_name(err));
+}
+
 static esp_err_t start_handler(httpd_req_t *req)
 {
+    if (!s_activity_ready_cb || !s_activity_cb) {
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        return httpd_resp_sendstr(req,
+            "<meta charset=utf-8><p>Séance indisponible : le SpeedCoach est en mode test Wi-Fi ou ses services ne sont pas initialisés.</p><a href='/'>Retour</a>");
+    }
+    esp_err_t ready = s_activity_ready_cb();
+    if (ready != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        return httpd_resp_sendstr(req,
+            "<meta charset=utf-8><p>Séance impossible : stockage SPIFFS non monté ou activité déjà en cours. Initialisez le stockage puis réessayez.</p><a href='/'>Retour</a>");
+    }
+    esp_err_t queued = httpd_queue_work(s_server, start_activity_work, NULL);
     httpd_resp_set_type(req, "text/html; charset=utf-8");
-    esp_err_t response_err = httpd_resp_sendstr(req,
-        "<meta charset=utf-8><p>Demande de démarrage envoyée. Le Wi-Fi se coupe pendant la séance.</p>");
-    if (response_err == ESP_OK && s_activity_cb) (void)s_activity_cb();
-    return response_err;
+    if (queued != ESP_OK) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        return httpd_resp_sendstr(req, "<meta charset=utf-8><p>Impossible de transmettre le démarrage.</p><a href='/'>Retour</a>");
+    }
+    return httpd_resp_sendstr(req,
+        "<meta charset=utf-8><p>Demande de démarrage transmise. Le Wi-Fi sera coupé uniquement si la séance démarre.</p>");
 }
 
 static esp_err_t download_handler(httpd_req_t *req)
@@ -174,7 +236,7 @@ esp_err_t wifi_export_start(void)
     memcpy(config.ap.password, AP_PASSWORD, sizeof(AP_PASSWORD) - 1);
     config.ap.ssid_len = sizeof(AP_SSID) - 1;
     config.ap.channel = 1;
-    config.ap.max_connection = 3;
+    config.ap.max_connection = 1;
     config.ap.authmode = WIFI_AUTH_WPA2_PSK;
     err = esp_wifi_set_mode(WIFI_MODE_AP);
     if (err == ESP_OK) err = esp_wifi_set_config(WIFI_IF_AP, &config);
@@ -191,11 +253,13 @@ esp_err_t wifi_export_start(void)
     httpd_uri_t index = {.uri = "/", .method = HTTP_GET, .handler = index_handler};
     httpd_uri_t download = {.uri = "/download", .method = HTTP_GET, .handler = download_handler};
     httpd_uri_t status = {.uri = "/api/status", .method = HTTP_GET, .handler = status_handler};
+    httpd_uri_t sensors = {.uri = "/api/sensors", .method = HTTP_GET, .handler = sensors_handler};
     httpd_uri_t config_uri = {.uri = "/config", .method = HTTP_GET, .handler = config_handler};
     httpd_uri_t start = {.uri = "/start", .method = HTTP_GET, .handler = start_handler};
     httpd_register_uri_handler(s_server, &index);
     httpd_register_uri_handler(s_server, &download);
     httpd_register_uri_handler(s_server, &status);
+    httpd_register_uri_handler(s_server, &sensors);
     httpd_register_uri_handler(s_server, &config_uri);
     httpd_register_uri_handler(s_server, &start);
     ESP_LOGI(TAG, "AP started: %s (password: %s), http://192.168.4.1", AP_SSID, AP_PASSWORD);

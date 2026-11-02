@@ -45,3 +45,8 @@ CONFIG_BT_NIMBLE_MAX_CCCDS=4
 # CONFIG_BT_NIMBLE_SECURITY_ENABLE is not set
 # Leave NimBLE affinity at the ESP32-C3 single-core default.
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=23
+
+# The coach uses a single phone on its Wi-Fi AP while BLE heart rate is active.
+# Smaller dynamic Wi-Fi pools leave internal RAM for NimBLE and the stroke task.
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=8
