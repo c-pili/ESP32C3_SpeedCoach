@@ -96,10 +96,29 @@ void app_main(void)
         ESP_LOGW(TAG, "MPU6050 absent: using lightweight Wi-Fi session setup; stroke metrics unavailable");
 
     if (s_imu_bus.bus) (void)PCF85063_init(&s_imu_bus);
+
+    /* Mount storage before optional UI/tasks consume the remaining internal
+     * RAM. A first boot may format the empty SPIFFS partition here. */
+    esp_err_t storage_err = flash_storage_mount(&s_storage);
+    if (storage_err != ESP_OK)
+    {
+        ESP_LOGW(TAG, "Flash activity storage mount failed: %s", esp_err_to_name(storage_err));
+    }
+
     /* NimBLE starts after the phone has joined the AP and requested the page.
      * This keeps its initial allocations and active scan away from Wi-Fi
      * association. */
-    esp_err_t display_err = imu_ready ? init_display_and_lvgl() : ESP_ERR_NOT_SUPPORTED;
+    esp_err_t display_err = ESP_ERR_NOT_SUPPORTED;
+    if (imu_ready &&
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) >= 20000)
+    {
+        display_err = init_display_and_lvgl();
+    }
+    else if (imu_ready)
+    {
+        ESP_LOGW(TAG, "Skipping local display: insufficient internal RAM (largest=%u)",
+                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    }
     const bool ui_ready = imu_ready && display_err == ESP_OK;
     s_ui_ready = ui_ready;
 
@@ -132,9 +151,9 @@ void app_main(void)
     ESP_ERROR_CHECK(s_log_q ? ESP_OK : ESP_ERR_NO_MEM);
 
     BaseType_t logger_ok = xTaskCreate(activity_logger_task, "activity_logger",
-                                       3072, NULL, 6, NULL);
+                                       2048, NULL, 6, NULL);
     BaseType_t worker_ok = xTaskCreate(activity_worker_task, "activity_worker",
-                                       4096, NULL, 9, &s_act_worker_task);
+                                       3072, NULL, 9, &s_act_worker_task);
     if (logger_ok != pdPASS || worker_ok != pdPASS) {
         ESP_LOGE(TAG, "Activity task creation failed (logger=%d worker=%d)",
                  (int)logger_ok, (int)worker_ok);
@@ -156,11 +175,6 @@ void app_main(void)
     wifi_export_set_callbacks(web_configure_workout, web_activity_ready, web_start_activity,
                               ui_status_bar_read_battery_percent, web_start_sensor_hub);
 
-    esp_err_t storage_err = flash_storage_mount(&s_storage);
-    if (storage_err != ESP_OK)
-    {
-        ESP_LOGW(TAG, "Flash activity storage mount failed: %s", esp_err_to_name(storage_err));
-    }
     bool saved_dark = nvs_helper_get_dark_mode();
     if (ui_ready) ui_set_dark_mode(saved_dark);
     /* The 400x240 memory LCD is landscape and the one-button UI has no
@@ -182,7 +196,7 @@ void app_main(void)
      * LVGL/BLE. A silent pdFAIL here kills SPM with no other symptom. */
     if (imu_ready) {
         BaseType_t stroke_ok = xTaskCreatePinnedToCore(stroke_task, "stroke",
-                                                       4096, NULL, 3, NULL, 0);
+                                                       3072, NULL, 3, NULL, 0);
         if (stroke_ok != pdPASS) {
             ESP_LOGE(TAG, "stroke task create FAILED, free internal=%u largest=%u",
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),

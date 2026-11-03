@@ -19,7 +19,7 @@ esp_err_t init_display_and_lvgl(void)
 
     ESP_LOGI(TAG, "Init LVGL port...");
     lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    lvgl_cfg.task_stack = 12288; /* Sharp 400x240 UI plus status and history pages. */
+    lvgl_cfg.task_stack = 6144; /* Keep the local display optional on the ESP32-C3. */
     err = lvgl_port_init(&lvgl_cfg);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "LVGL unavailable (%s); continuing without local display", esp_err_to_name(err));
@@ -35,4 +35,3 @@ esp_err_t init_display_and_lvgl(void)
     lv_disp_set_default(s_disp);
     return ESP_OK;
 }
-
