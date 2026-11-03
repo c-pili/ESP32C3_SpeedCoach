@@ -26,6 +26,14 @@ esp_err_t nvs_helper_init(void)
         ESP_ERROR_CHECK(nvs_flash_erase());
         err = nvs_flash_init();
     }
+    if (err != ESP_OK) return err;
+
+    /* A fresh NVS partition has no namespaces yet. Create the application
+     * namespace once so read-only getters use their documented defaults
+     * without producing misleading ESP_ERR_NVS_NOT_FOUND errors. */
+    nvs_handle_t handle;
+    err = nvs_open(NAMESPACE, NVS_READWRITE, &handle);
+    if (err == ESP_OK) nvs_close(handle);
     return err;
 }
 

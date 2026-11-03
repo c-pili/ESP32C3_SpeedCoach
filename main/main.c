@@ -131,8 +131,14 @@ void app_main(void)
     s_log_q = xQueueCreate(LOG_QUEUE_LEN, sizeof(activity_log_msg_t));
     ESP_ERROR_CHECK(s_log_q ? ESP_OK : ESP_ERR_NO_MEM);
 
-    xTaskCreate(activity_logger_task, "activity_logger", 6144, NULL, 6, NULL);
-    xTaskCreate(activity_worker_task, "activity_worker", 8192, NULL, 9, &s_act_worker_task);
+    BaseType_t logger_ok = xTaskCreate(activity_logger_task, "activity_logger",
+                                       3072, NULL, 6, NULL);
+    BaseType_t worker_ok = xTaskCreate(activity_worker_task, "activity_worker",
+                                       4096, NULL, 9, &s_act_worker_task);
+    if (logger_ok != pdPASS || worker_ok != pdPASS) {
+        ESP_LOGE(TAG, "Activity task creation failed (logger=%d worker=%d)",
+                 (int)logger_ok, (int)worker_ok);
+    }
     if (ui_ready) {
         /* Create UI in separate module */
         ui_init(s_disp);
@@ -176,7 +182,7 @@ void app_main(void)
      * LVGL/BLE. A silent pdFAIL here kills SPM with no other symptom. */
     if (imu_ready) {
         BaseType_t stroke_ok = xTaskCreatePinnedToCore(stroke_task, "stroke",
-                                                       6144, NULL, 3, NULL, 0);
+                                                       4096, NULL, 3, NULL, 0);
         if (stroke_ok != pdPASS) {
             ESP_LOGE(TAG, "stroke task create FAILED, free internal=%u largest=%u",
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
