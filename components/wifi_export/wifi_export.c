@@ -257,9 +257,14 @@ esp_err_t wifi_export_start(void)
     memcpy(config.ap.password, AP_PASSWORD, sizeof(AP_PASSWORD) - 1);
     config.ap.ssid_len = sizeof(AP_SSID) - 1;
     config.ap.channel = 1;
-    config.ap.max_connection = 1;
+    config.ap.max_connection = 4;
     config.ap.authmode = WIFI_AUTH_WPA2_PSK;
     err = esp_wifi_set_mode(WIFI_MODE_AP);
+    if (err == ESP_OK) err = esp_wifi_set_protocol(WIFI_IF_AP,
+                                                    WIFI_PROTOCOL_11B |
+                                                    WIFI_PROTOCOL_11G |
+                                                    WIFI_PROTOCOL_11N);
+    if (err == ESP_OK) err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
     if (err == ESP_OK) err = esp_wifi_set_config(WIFI_IF_AP, &config);
     if (err == ESP_OK) err = esp_wifi_start();
     if (err != ESP_OK) return err;
