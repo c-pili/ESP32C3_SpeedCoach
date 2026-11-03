@@ -24,41 +24,7 @@ void create_pages_ui(void)
     lv_obj_set_style_border_width(ui_s_page_data, 0, 0);
     data_page_create(ui_s_page_data);
 
-    // 2. Menu Page (NEW)
-    ui_s_page_menu = lv_obj_create(ui_s_scr);
-    lv_obj_set_size(ui_s_page_menu, lv_pct(100), lv_pct(100));
-    lv_obj_clear_flag(ui_s_page_menu, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(ui_s_page_menu, 0, 0);
-    lv_obj_set_style_border_width(ui_s_page_menu, 0, 0);
-    ui_theme_apply_screen(ui_s_page_menu);
-    menu_page_create(ui_s_page_menu);
-
-    // 3. Settings Page
-    ui_s_page_settings = lv_obj_create(ui_s_scr);
-    lv_obj_set_size(ui_s_page_settings, lv_pct(100), lv_pct(100));
-    lv_obj_clear_flag(ui_s_page_settings, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(ui_s_page_settings, 0, 0);
-    lv_obj_set_style_border_width(ui_s_page_settings, 0, 0);
-    ui_theme_apply_screen(ui_s_page_settings);
-    settings_page_create(ui_s_page_settings);
-    // Activity Summary page
-    ui_s_page_activity_summary = lv_obj_create(ui_s_scr);
-    lv_obj_set_size(ui_s_page_activity_summary, lv_pct(100), lv_pct(100));
-    lv_obj_clear_flag(ui_s_page_activity_summary, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(ui_s_page_activity_summary, 0, 0);
-    lv_obj_set_style_border_width(ui_s_page_activity_summary, 0, 0);
-    ui_theme_apply_screen(ui_s_page_activity_summary);
-    activity_summary_page_create(ui_s_page_activity_summary);
-
-    // Activity Detail page
-    ui_s_page_activity_detail = lv_obj_create(ui_s_scr);
-    lv_obj_set_size(ui_s_page_activity_detail, lv_pct(100), lv_pct(100));
-    lv_obj_clear_flag(ui_s_page_activity_detail, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(ui_s_page_activity_detail, 0, 0);
-    lv_obj_set_style_border_width(ui_s_page_activity_detail, 0, 0);
-    ui_theme_apply_screen(ui_s_page_activity_detail);
-    activity_detail_page_create(ui_s_page_activity_detail);
-
+    // 2. Acceleration Page
     ui_s_page_acceleration = lv_obj_create(ui_s_scr);
     lv_obj_set_size(ui_s_page_acceleration, lv_pct(100), lv_pct(100));
     lv_obj_clear_flag(ui_s_page_acceleration, LV_OBJ_FLAG_SCROLLABLE);
@@ -68,6 +34,62 @@ void create_pages_ui(void)
     acceleration_page_create(ui_s_page_acceleration);
 
     ui_s_current_page = UI_PAGE_DATA;
+    ui_pages_relayout();
+}
+
+void ensure_menu_page(void)
+{
+    if (ui_s_page_menu || !ui_s_scr)
+        return;
+    ui_s_page_menu = lv_obj_create(ui_s_scr);
+    lv_obj_set_size(ui_s_page_menu, lv_pct(100), lv_pct(100));
+    lv_obj_clear_flag(ui_s_page_menu, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(ui_s_page_menu, 0, 0);
+    lv_obj_set_style_border_width(ui_s_page_menu, 0, 0);
+    ui_theme_apply_screen(ui_s_page_menu);
+    menu_page_create(ui_s_page_menu);
+    ui_pages_relayout();
+}
+
+void ensure_settings_page(void)
+{
+    if (ui_s_page_settings || !ui_s_scr)
+        return;
+    ui_s_page_settings = lv_obj_create(ui_s_scr);
+    lv_obj_set_size(ui_s_page_settings, lv_pct(100), lv_pct(100));
+    lv_obj_clear_flag(ui_s_page_settings, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(ui_s_page_settings, 0, 0);
+    lv_obj_set_style_border_width(ui_s_page_settings, 0, 0);
+    ui_theme_apply_screen(ui_s_page_settings);
+    settings_page_create(ui_s_page_settings);
+    ui_pages_relayout();
+}
+
+void ensure_activity_summary_page(void)
+{
+    if (ui_s_page_activity_summary || !ui_s_scr)
+        return;
+    ui_s_page_activity_summary = lv_obj_create(ui_s_scr);
+    lv_obj_set_size(ui_s_page_activity_summary, lv_pct(100), lv_pct(100));
+    lv_obj_clear_flag(ui_s_page_activity_summary, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(ui_s_page_activity_summary, 0, 0);
+    lv_obj_set_style_border_width(ui_s_page_activity_summary, 0, 0);
+    ui_theme_apply_screen(ui_s_page_activity_summary);
+    activity_summary_page_create(ui_s_page_activity_summary);
+    ui_pages_relayout();
+}
+
+void ensure_activity_detail_page(void)
+{
+    if (ui_s_page_activity_detail || !ui_s_scr)
+        return;
+    ui_s_page_activity_detail = lv_obj_create(ui_s_scr);
+    lv_obj_set_size(ui_s_page_activity_detail, lv_pct(100), lv_pct(100));
+    lv_obj_clear_flag(ui_s_page_activity_detail, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(ui_s_page_activity_detail, 0, 0);
+    lv_obj_set_style_border_width(ui_s_page_activity_detail, 0, 0);
+    ui_theme_apply_screen(ui_s_page_activity_detail);
+    activity_detail_page_create(ui_s_page_activity_detail);
     ui_pages_relayout();
 }
 

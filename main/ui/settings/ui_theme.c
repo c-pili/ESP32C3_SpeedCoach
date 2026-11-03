@@ -27,11 +27,11 @@ static ui_theme_palette_t palette_light(void)
         .surface = lv_color_hex(0xFFFFFF),
         .text = lv_color_hex(0x1A2433),
         .text_muted = lv_color_hex(0x2C3A4B),
-        .border = lv_color_hex(0xD5DCE6),
-        .accent = lv_color_hex(0x2B5EA7),
+        .border = lv_color_hex(0x1A2433),
+        .accent = lv_color_hex(0x1A2433),
         .accent_text = lv_color_hex(0xFFFFFF),
-        .alert = lv_color_hex(0xDC2626),
-        .rec = lv_color_hex(0xEF4444),
+        .alert = lv_color_hex(0x1A2433),
+        .rec = lv_color_hex(0x1A2433),
     };
 }
 
@@ -42,11 +42,11 @@ static ui_theme_palette_t palette_dark(void)
         .surface = lv_color_hex(0x1B2434),
         .text = lv_color_hex(0xE8EEF6),
         .text_muted = lv_color_hex(0x8B9BB0),
-        .border = lv_color_hex(0x334155),
-        .accent = lv_color_hex(0x7BA3D9),
+        .border = lv_color_hex(0xE8EEF6),
+        .accent = lv_color_hex(0xFFFFFF),
         .accent_text = lv_color_hex(0x101826),
-        .alert = lv_color_hex(0xF87171),
-        .rec = lv_color_hex(0xF87171),
+        .alert = lv_color_hex(0xFFFFFF),
+        .rec = lv_color_hex(0xFFFFFF),
     };
 }
 

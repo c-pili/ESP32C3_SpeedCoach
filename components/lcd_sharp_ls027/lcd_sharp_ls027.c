@@ -36,14 +36,15 @@ static esp_err_t sharp_send(const uint8_t *data, size_t len)
     trans.tx_buffer = data;
 
     gpio_set_level(CONFIG_LCD_SHARP_PIN_SCS, 1);
-    esp_rom_delay_us(3); /* Sharp SCS setup time before the first SCLK edge. */
+    esp_rom_delay_us(6); /* Sharp tsSCS >= 6 us setup time before the first SCLK edge. */
     esp_err_t err = spi_device_polling_transmit(s_spi, &trans);
     if (len == 3) {
         /* Hold mode-only and clear commands for a conservative 220 us pulse. */
         esp_rom_delay_us(220);
     }
-    esp_rom_delay_us(4); /* Meet SCS hold time and 220 us data-update minimum. */
+    esp_rom_delay_us(4); /* Meet thSCS >= 2 us hold time and 220 us data-update minimum. */
     gpio_set_level(CONFIG_LCD_SHARP_PIN_SCS, 0);
+    esp_rom_delay_us(2); /* Sharp twSCSL >= 2 us minimum SCS low time between transactions. */
     return err;
 }
 

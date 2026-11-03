@@ -32,18 +32,35 @@ esp_err_t mpu6050_init(mpu6050_handle_t *imu, i2c_helper_t *bus, uint8_t addr_7b
     ESP_RETURN_ON_ERROR(i2c_helper_add_device(bus, addr_7bit, &imu->dev), TAG, "add device");
 
     uint8_t who = 0;
-    ESP_RETURN_ON_ERROR(i2c_helper_read_reg(imu->dev, REG_WHO_AM_I, &who, 1), TAG, "WHO_AM_I");
-    if (who != MPU6050_WHO_AM_I) {
-        ESP_LOGE(TAG, "unexpected WHO_AM_I 0x%02x (expected 0x%02x)", who, MPU6050_WHO_AM_I);
+    esp_err_t err = i2c_helper_read_reg(imu->dev, REG_WHO_AM_I, &who, 1);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WHO_AM_I read failed at 0x%02x: %s", addr_7bit, esp_err_to_name(err));
+        (void)i2c_master_bus_rm_device(imu->dev);
+        imu->dev = NULL;
+        return err;
+    }
+    if (who == 0x00 || who == 0xFF) {
+        ESP_LOGE(TAG, "invalid WHO_AM_I 0x%02x at 0x%02x", who, addr_7bit);
+        (void)i2c_master_bus_rm_device(imu->dev);
+        imu->dev = NULL;
         return ESP_ERR_NOT_FOUND;
+    }
+    if (who != MPU6050_WHO_AM_I) {
+        ESP_LOGW(TAG, "compatible IMU WHO_AM_I 0x%02x at 0x%02x (expected 0x%02x)",
+                 who, addr_7bit, MPU6050_WHO_AM_I);
     }
 
     /* Wake the sensor, use the gyro PLL, and sample at 100 Hz with a 44 Hz DLPF. */
-    ESP_RETURN_ON_ERROR(write8(imu, REG_PWR_MGMT_1, 0x01), TAG, "wake");
-    ESP_RETURN_ON_ERROR(write8(imu, REG_CONFIG, 0x03), TAG, "DLPF");
-    ESP_RETURN_ON_ERROR(write8(imu, REG_SMPLRT_DIV, 9), TAG, "sample rate");
-    ESP_RETURN_ON_ERROR(write8(imu, REG_GYRO_CONFIG, 0x08), TAG, "gyro range"); /* ±500 dps */
-    ESP_RETURN_ON_ERROR(write8(imu, REG_ACCEL_CONFIG, 0x10), TAG, "accel range"); /* ±8 g */
+    if ((err = write8(imu, REG_PWR_MGMT_1, 0x01)) != ESP_OK ||
+        (err = write8(imu, REG_CONFIG, 0x03)) != ESP_OK ||
+        (err = write8(imu, REG_SMPLRT_DIV, 9)) != ESP_OK ||
+        (err = write8(imu, REG_GYRO_CONFIG, 0x08)) != ESP_OK ||  /* ±500 dps */
+        (err = write8(imu, REG_ACCEL_CONFIG, 0x10)) != ESP_OK) { /* ±8 g */
+        ESP_LOGE(TAG, "MPU6050 config failed at 0x%02x: %s", addr_7bit, esp_err_to_name(err));
+        (void)i2c_master_bus_rm_device(imu->dev);
+        imu->dev = NULL;
+        return err;
+    }
 
     imu->accel_scale = (8.0f * 9.80665f) / 32768.0f;
     imu->gyro_scale = ((500.0f / 32768.0f) * (float)M_PI) / 180.0f;

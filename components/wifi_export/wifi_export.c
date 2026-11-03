@@ -250,6 +250,7 @@ esp_err_t wifi_export_start(void)
         wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
         err = esp_wifi_init(&init);
         if (err != ESP_OK) return err;
+        (void)esp_wifi_set_storage(WIFI_STORAGE_RAM);
         s_wifi_initialized = true;
     }
     wifi_config_t config = {0};
@@ -259,15 +260,19 @@ esp_err_t wifi_export_start(void)
     config.ap.channel = 1;
     config.ap.max_connection = 4;
     config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    config.ap.pmf_cfg.required = false;
     err = esp_wifi_set_mode(WIFI_MODE_AP);
-    if (err == ESP_OK) err = esp_wifi_set_protocol(WIFI_IF_AP,
-                                                    WIFI_PROTOCOL_11B |
-                                                    WIFI_PROTOCOL_11G |
-                                                    WIFI_PROTOCOL_11N);
-    if (err == ESP_OK) err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
-    if (err == ESP_OK) err = esp_wifi_set_config(WIFI_IF_AP, &config);
+    if (err != ESP_OK) return err;
+    (void)esp_wifi_set_protocol(WIFI_IF_AP,
+                                WIFI_PROTOCOL_11B |
+                                WIFI_PROTOCOL_11G |
+                                WIFI_PROTOCOL_11N);
+    (void)esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
+    err = esp_wifi_set_config(WIFI_IF_AP, &config);
     if (err == ESP_OK) err = esp_wifi_start();
     if (err != ESP_OK) return err;
+    (void)esp_wifi_set_ps(WIFI_PS_NONE);
+    (void)esp_wifi_set_max_tx_power(56); /* ~14 dBm: avoids breadboard brownout/reflection issues on ESP32-C3 */
     httpd_config_t http_config = HTTPD_DEFAULT_CONFIG();
     err = httpd_start(&s_server, &http_config);
     if (err != ESP_OK) {

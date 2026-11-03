@@ -25,4 +25,8 @@ extern ui_status_bar_t ui_s_live_status;
 
 void ui_pages_relayout(void);
 void create_pages_ui(void);
+void ensure_menu_page(void);
+void ensure_settings_page(void);
+void ensure_activity_summary_page(void);
+void ensure_activity_detail_page(void);
 void ensure_sensors_page(void);

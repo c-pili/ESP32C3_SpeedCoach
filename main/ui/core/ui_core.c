@@ -140,7 +140,11 @@ void ui_set_dark_mode(bool enabled)
     lvgl_port_lock(0);
     /* Switch ON (enabled) must look dark on this panel; palettes were reversed. */
     ui_theme_set(enabled ? UI_THEME_LIGHT : UI_THEME_DARK);
+    if (ui_s_page_acceleration) {
+        ui_theme_apply_screen(ui_s_page_acceleration);
+    }
     data_page_apply_theme();
+    acceleration_page_apply_theme();
     settings_page_apply_theme();
     menu_page_apply_theme();
     activity_summary_page_apply_theme();

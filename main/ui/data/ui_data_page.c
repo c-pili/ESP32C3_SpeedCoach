@@ -190,9 +190,9 @@ static void apply_metric_to_slot(int idx)
 
 static void style_box(lv_obj_t *box)
 {
-    ui_theme_apply_surface(box);
+    ui_theme_apply_surface_border(box);
     lv_obj_set_style_radius(box, 8, 0);
-    lv_obj_set_style_border_width(box, 0, 0);
+    lv_obj_set_style_border_width(box, 1, 0);
     lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(box, LV_DIR_NONE);
 }

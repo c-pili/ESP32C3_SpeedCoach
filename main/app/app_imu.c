@@ -90,24 +90,39 @@ static ui_orientation_t decide_orientation_from_accel(float ax, float ay, float 
     }
 }
 
+static bool probe_mpu6050(void)
+{
+    if (!s_imu_bus.bus) return false;
+    uint8_t primary = (uint8_t)CONFIG_IMU_MPU6050_ADDR;
+    uint8_t alt = (primary == 0x68u) ? 0x69u : 0x68u;
+    if (mpu6050_init(&s_imu, &s_imu_bus, primary) == ESP_OK) {
+        return true;
+    }
+    if (mpu6050_init(&s_imu, &s_imu_bus, alt) == ESP_OK) {
+        return true;
+    }
+    memset(&s_imu, 0, sizeof(s_imu));
+    return false;
+}
+
 bool init_imu(void)
 {
     ESP_LOGI(TAG, "Init IMU I2C bus + MPU6050...");
 
-    esp_err_t err = i2c_helper_init(&s_imu_bus,
-                                    IMU_I2C_PORT,
-                                    IMU_SDA_GPIO,
-                                    IMU_SCL_GPIO,
-                                    IMU_I2C_CLK);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "IMU I2C unavailable (%s); Wi-Fi setup remains available", esp_err_to_name(err));
-        memset(&s_imu, 0, sizeof(s_imu));
-        return false;
+    if (!s_imu_bus.bus) {
+        esp_err_t err = i2c_helper_init(&s_imu_bus,
+                                        IMU_I2C_PORT,
+                                        IMU_SDA_GPIO,
+                                        IMU_SCL_GPIO,
+                                        IMU_I2C_CLK);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "IMU I2C unavailable (%s); Wi-Fi setup remains available", esp_err_to_name(err));
+            memset(&s_imu, 0, sizeof(s_imu));
+            return false;
+        }
     }
-    err = mpu6050_init(&s_imu, &s_imu_bus, CONFIG_IMU_MPU6050_ADDR);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "MPU6050 unavailable (%s); Wi-Fi setup remains available", esp_err_to_name(err));
-        memset(&s_imu, 0, sizeof(s_imu));
+    if (!probe_mpu6050()) {
+        ESP_LOGW(TAG, "MPU6050 unavailable; Wi-Fi setup and display remain available");
         return false;
     }
     return true;
@@ -189,20 +204,25 @@ void stroke_task(void *arg)
             s_last_split_delta = NAN;
         }
 
-        float ax, ay, az, gx, gy, gz;
-        if (s_imu.dev && mpu6050_read_accel_gyro(&s_imu, &ax, &ay, &az, &gx, &gy, &gz) == ESP_OK)
-        {
-            int64_t now_us = esp_timer_get_time();
-            float t_s = (float)(now_us - t0_us) * 1e-6f;
-            float dt_s = (float)(now_us - prev_us) * 1e-6f;
-            prev_us = now_us;
-            if (dt_s < 0.0f)
-                dt_s = 0.0f;
-            if (dt_s > 0.1f)
-                dt_s = 0.1f;
+        int64_t now_us = esp_timer_get_time();
+        float t_s = (float)(now_us - t0_us) * 1e-6f;
+        float dt_s = (float)(now_us - prev_us) * 1e-6f;
+        prev_us = now_us;
+        if (dt_s < 0.0f)
+            dt_s = 0.0f;
+        if (dt_s > 0.1f)
+            dt_s = 0.1f;
 
-            stroke_metrics_t m = {0};
-            stroke_event_t ev = stroke_detection_update(&s_stroke, t_s, ax, ay, az, gx, gy, gz, &m);
+        float ax = 0.0f, ay = 0.0f, az = 0.0f, gx = 0.0f, gy = 0.0f, gz = 0.0f;
+        stroke_metrics_t m = {0};
+        m.a_long = NAN;
+        stroke_event_t ev = STROKE_EVENT_NONE;
+        bool imu_ok = (s_imu.dev &&
+                       mpu6050_read_accel_gyro(&s_imu, &ax, &ay, &az, &gx, &gy, &gz) == ESP_OK);
+
+        if (imu_ok)
+        {
+            ev = stroke_detection_update(&s_stroke, t_s, ax, ay, az, gx, gy, gz, &m);
 
             if (ev != STROKE_EVENT_NONE)
             {
@@ -237,261 +257,264 @@ void stroke_task(void *arg)
                 s_last_valid_spm = m.spm;
                 s_last_spm_t_s = t_s;
             }
-
-            float spm_raw = s_last_valid_spm;
-            if (s_last_spm_t_s > 0.0f && (t_s - s_last_spm_t_s) > 12.0f)
-                spm_raw = NAN;
-            if (!isfinite(spm_raw))
-                spm_raw = 0.0f;
-
-            // GPS Logic
-            gps_fix_t fix;
-            bool gps_connected = false;
-            uint8_t gps_bars = 0; // 0 means "no fix / searching"
-            bool gps_ok = false;
-
-            if (gps_neo_m8n_get_latest(&fix))
-            {
-                int64_t age_us = esp_timer_get_time() - fix.rx_time_us;
-                gps_connected = (age_us < 2000000);
-
-                if (gps_connected && fix.valid_fix)
-                {
-                    // ok for UI quality
-                    int sats = fix.sats;
-                    float hdop = fix.hdop;
-
-                    if (sats >= 10 && hdop <= 1.2f)
-                        gps_bars = 4;
-                    else if (sats >= 8 && hdop <= 1.8f)
-                        gps_bars = 3;
-                    else if (sats >= 6 && hdop <= 2.8f)
-                        gps_bars = 2;
-                    else
-                        gps_bars = 1;
-                }
-                else if (gps_connected)
-                {
-                    gps_bars = 0; // connected but no fix -> RED dot
-                }
-
-                // your gps_ok logic can stay stricter:
-                    if (gps_connected && fix.valid_fix && isfinite(fix.speed_mps))
-                {
-                    gps_ok = true;
-                    s_gps_lat = fix.lat_deg;
-                    s_gps_lon = fix.lon_deg;
-
-                    const float tau = 2.2f;
-                    float alpha = dt_s / (tau + dt_s);
-                    if (!isfinite(s_gps_speed_filt))
-                        s_gps_speed_filt = fix.speed_mps;
-                    else
-                        s_gps_speed_filt += alpha * (fix.speed_mps - s_gps_speed_filt);
-                }
-            }
-            else
-            {
-                gps_connected = false;
-                gps_bars = 0;
-            }
-
-            float speed_mps = gps_ok ? s_gps_speed_filt : 0.0f;
-            float dist_delta_m = speed_mps * dt_s;
-
-            // --- 1. Calculate Derived Metrics for Logging ---
-
-            // Instant Pace (s/500m)
-            float instant_pace_s = (speed_mps > 0.1f) ? (500.0f / speed_mps) : 0.0f;
-
-            // Stroke Length (m) = Speed * Period
-            float stroke_len_m = 0.0f;
-            if (isfinite(m.stroke_period_s) && m.stroke_period_s > 0.0f)
-            {
-                stroke_len_m = speed_mps * m.stroke_period_s;
-            }
-
-            // Recovery Ratio = Recovery / Drive
-            float recov_ratio = 0.0f;
-            if (m.drive_time_s > 0.01f)
-            {
-                recov_ratio = m.recovery_time_s / m.drive_time_s;
-            }
-            // --- End Derived Metrics ---
-
-            bool need_log = false;
-            activity_log_row_t row = {0};
-
-            if (s_activity_mutex)
-                xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
-
-            if (s_activity_recording)
-            {
-                s_session_time_s = (s_session_last_us > 0)
-                    ? (float)(esp_timer_get_time() - s_session_last_us) * 1e-6f
-                    : 0.0f;
-                s_activity.duration_ms = (uint32_t)(s_session_time_s * 1000.0f);
-
-                uint32_t stroke_delta = (ev == STROKE_EVENT_CATCH) ? 1 : 0;
-
-                // Update Session Model (Activity.c)
-                activity_update(&s_activity,
-                                dt_s,
-                                speed_mps,
-                                spm_raw,
-                                0.0f, // Power placeholder
-                                dist_delta_m,
-                                stroke_delta,
-                                gps_ok,
-                                (isfinite(s_last_valid_spm) && (t_s - s_last_spm_t_s) <= 12.0f));
-
-                // Calculate Avg Pace from Session Avg Speed
-                float avg_pace_s = (s_activity.avg_speed_mps > 0.1f) ? (500.0f / s_activity.avg_speed_mps) : 0.0f;
-
-                if (s_current_split_m > 0)
-                {
-                    while ((s_activity.distance_m - s_split_anchor_m) >= (float)s_current_split_m)
-                    {
-                        float dt_split = s_session_time_s - s_split_anchor_t;
-                        float split_pace = ((float)s_current_split_m > 0.1f)
-                                               ? (dt_split / ((float)s_current_split_m / 500.0f))
-                                               : NAN;
-                        s_last_split_delta = (isfinite(avg_pace_s) && avg_pace_s > 0.1f && isfinite(split_pace))
-                                                 ? (split_pace - avg_pace_s)
-                                                 : NAN;
-                        s_last_split_pace = split_pace;
-                        s_split_anchor_m += (float)s_current_split_m;
-                        s_split_anchor_t = s_session_time_s;
-                    }
-                }
-
-                // Only log on CATCH
-                if (ev == STROKE_EVENT_CATCH)
-                {
-                    ESP_LOGI(TAG, "CATCH n=%lu spm=%.1f axis=%d a=%.2f",
-                             (unsigned long)s_stroke.stroke_count,
-                             (double)m.spm, s_stroke.best_axis, (double)m.a_long_f);
-
-                    // --- Populate the 16-Column Row ---
-
-                    // 1. RTC Time
-                    row.rtc_time = time(NULL);
-                    // 2. Session Time
-                    row.session_time_s = s_session_time_s;
-                    // 3. Distance (Total)
-                    row.total_distance_m = s_activity.distance_m;
-                    // 4. Instant Pace
-                    row.pace_500m_s = instant_pace_s;
-                    // 5. SPM Instant
-                    row.spm_instant = spm_raw;
-                    // 6. Avg Pace
-                    row.avg_pace_500m_s = avg_pace_s;
-                    // 7. Avg Speed
-                    row.avg_speed_mps = s_activity.avg_speed_mps;
-                    // 8. Stroke Length
-                    row.stroke_length_m = stroke_len_m;
-                    // 9. Stroke Count
-                    row.stroke_count = s_activity.stroke_count;
-                    // 10. GPS Lat
-                    row.gps_lat = gps_ok ? s_gps_lat : 0.0;
-                    // 11. GPS Long
-                    row.gps_lon = gps_ok ? s_gps_lon : 0.0;
-                    // 12. Power
-                    row.power_w = 0.0f;
-                    // 13. Drive Time
-                    row.drive_time_s = m.drive_time_s;
-                    // 14. Recovery Time
-                    row.recovery_time_s = m.recovery_time_s;
-                    // 15. Recovery Ratio
-                    row.recovery_ratio = recov_ratio;
-                    sensor_hub_live_t live = {0};
-                    sensor_hub_get_live(&live);
-                    row.hr_bpm = live.hr_bpm;
-                    row.pod_valid = live.pod_valid;
-                    row.pod_catch_deg = (float)live.pod_catch_ddeg / 10.0f;
-                    row.pod_finish_deg = (float)live.pod_finish_ddeg / 10.0f;
-                    row.pod_arc_deg = (float)live.pod_arc_ddeg / 10.0f;
-
-
-                    need_log = true;
-                }
-            }
-
-            if (s_activity_mutex)
-                xSemaphoreGive(s_activity_mutex);
-
-            if (need_log && s_log_q)
-            {
-                activity_log_msg_t msg = {0};
-                msg.row = row;
-                xQueueSend(s_log_q, &msg, 0);
-            }
-
-
-            bool recording = s_activity_recording;
-            TickType_t now = xTaskGetTickCount();
-            bool catch_ui = (ev == STROKE_EVENT_CATCH);
-            if (catch_ui || (now - last_ui_tick) >= ui_period)
-            {
-                last_ui_tick = now;
-
-                float spm_raw_ui = s_last_valid_spm;
-                if (s_last_spm_t_s > 0.0f && (t_s - s_last_spm_t_s) > 12.0f)
-                    spm_raw_ui = NAN;
-                float spm_disp = spm_raw_ui;
-                if (isfinite(spm_disp))
-                    spm_disp = ceilf(spm_disp * 2.0f) / 2.0f;
-
-                float pace = (speed_mps > 0.2f) ? (500.0f / speed_mps) : NAN;
-                float avg_pace_s = (recording && s_activity.avg_speed_mps > 0.1f)
-                                       ? (500.0f / s_activity.avg_speed_mps)
-                                       : NAN;
-                float stroke_len_disp = NAN;
-                if (recording && stroke_len_m > 0.01f)
-                    stroke_len_disp = stroke_len_m;
-
-                coach_ui_snapshot_t snap = {
-                    .seq = ++s_ui_seq,
-                    .recording = recording,
-                    .gps_connected = gps_connected,
-                    .gps_ok = gps_ok,
-                    .gps_stale = gps_connected && !gps_ok,
-                    .gps_bars = gps_bars,
-                    .battery_pct = 255,
-                    .time_s = recording ? s_session_time_s : NAN,
-                    .distance_m = recording ? s_activity.distance_m : NAN,
-                    .pace_s_per_500m = recording ? pace : NAN,
-                    .avg_pace_s_per_500m = recording ? avg_pace_s : NAN,
-                    .speed_mps = recording ? speed_mps : NAN,
-                    .acceleration_mps2 = m.a_long,
-                    .spm = spm_disp,
-                    .stroke_len_m = stroke_len_disp,
-                    .stroke_count = recording ? s_activity.stroke_count : UINT32_MAX,
-                    .split_len_m = s_current_split_m,
-                    .split_progress_m = recording ? (s_activity.distance_m - s_split_anchor_m) : NAN,
-                    .last_split_pace_s = recording ? s_last_split_pace : NAN,
-                    .last_split_delta_s = recording ? s_last_split_delta : NAN,
-                };
-                sensor_hub_live_t live_ui = {0};
-                sensor_hub_get_live(&live_ui);
-                snap.hr_bpm = live_ui.hr_bpm;
-                snap.sensor_link = sensor_link_from_live(&live_ui);
-                snap.pod_valid = live_ui.pod_valid;
-                snap.pod_catch_deg = (float)live_ui.pod_catch_ddeg / 10.0f;
-                snap.pod_finish_deg = (float)live_ui.pod_finish_ddeg / 10.0f;
-                snap.pod_arc_deg = (float)live_ui.pod_arc_ddeg / 10.0f;
-                coach_ui_snapshot_publish(&snap);
-            }
         }
         else
         {
             static uint32_t s_imu_fail;
             s_imu_fail++;
-            if ((s_imu_fail % 50u) == 1u) {
-                ESP_LOGW(TAG, "IMU read failed (%lu)", (unsigned long)s_imu_fail);
-                if (s_imu_bus.bus)
+            if ((s_imu_fail % 100u) == 1u) {
+                if (s_imu.dev) {
+                    ESP_LOGW(TAG, "IMU read failed (%lu), resetting I2C bus", (unsigned long)s_imu_fail);
+                    (void)i2c_master_bus_rm_device(s_imu.dev);
+                    s_imu.dev = NULL;
+                }
+                if (s_imu_bus.bus) {
                     (void)i2c_helper_bus_reset(&s_imu_bus);
+                    (void)probe_mpu6050();
+                }
             }
+        }
+
+        float spm_raw = s_last_valid_spm;
+        if (s_last_spm_t_s > 0.0f && (t_s - s_last_spm_t_s) > 12.0f)
+            spm_raw = NAN;
+        if (!isfinite(spm_raw))
+            spm_raw = 0.0f;
+
+        // GPS Logic
+        gps_fix_t fix;
+        bool gps_connected = false;
+        uint8_t gps_bars = 0; // 0 means "no fix / searching"
+        bool gps_ok = false;
+
+        if (gps_neo_m8n_get_latest(&fix))
+        {
+            int64_t age_us = esp_timer_get_time() - fix.rx_time_us;
+            gps_connected = (age_us < 2000000);
+
+            if (gps_connected && fix.valid_fix)
+            {
+                // ok for UI quality
+                int sats = fix.sats;
+                float hdop = fix.hdop;
+
+                if (sats >= 10 && hdop <= 1.2f)
+                    gps_bars = 4;
+                else if (sats >= 8 && hdop <= 1.8f)
+                    gps_bars = 3;
+                else if (sats >= 6 && hdop <= 2.8f)
+                    gps_bars = 2;
+                else
+                    gps_bars = 1;
+            }
+            else if (gps_connected)
+            {
+                gps_bars = 0; // connected but no fix -> RED dot
+            }
+
+            if (gps_connected && fix.valid_fix && isfinite(fix.speed_mps))
+            {
+                gps_ok = true;
+                s_gps_lat = fix.lat_deg;
+                s_gps_lon = fix.lon_deg;
+
+                const float tau = 2.2f;
+                float alpha = dt_s / (tau + dt_s);
+                if (!isfinite(s_gps_speed_filt))
+                    s_gps_speed_filt = fix.speed_mps;
+                else
+                    s_gps_speed_filt += alpha * (fix.speed_mps - s_gps_speed_filt);
+            }
+        }
+        else
+        {
+            gps_connected = false;
+            gps_bars = 0;
+        }
+
+        float speed_mps = (gps_ok && s_gps_speed_filt > 0.0f) ? s_gps_speed_filt : 0.0f;
+        float dist_delta_m = speed_mps * dt_s;
+
+        // --- 1. Calculate Derived Metrics for Logging ---
+
+        // Instant Pace (s/500m)
+        float instant_pace_s = (speed_mps > 0.1f) ? (500.0f / speed_mps) : 0.0f;
+
+        // Stroke Length (m) = Speed * Period
+        float stroke_len_m = 0.0f;
+        if (imu_ok && isfinite(m.stroke_period_s) && m.stroke_period_s > 0.0f)
+        {
+            stroke_len_m = speed_mps * m.stroke_period_s;
+        }
+
+        // Recovery Ratio = Recovery / Drive
+        float recov_ratio = 0.0f;
+        if (imu_ok && m.drive_time_s > 0.01f)
+        {
+            recov_ratio = m.recovery_time_s / m.drive_time_s;
+        }
+        // --- End Derived Metrics ---
+
+        bool need_log = false;
+        activity_log_row_t row = {0};
+
+        if (s_activity_mutex)
+            xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
+
+        if (s_activity_recording)
+        {
+            s_session_time_s = (s_session_last_us > 0)
+                ? (float)(esp_timer_get_time() - s_session_last_us) * 1e-6f
+                : 0.0f;
+            s_activity.duration_ms = (uint32_t)(s_session_time_s * 1000.0f);
+
+            uint32_t stroke_delta = (ev == STROKE_EVENT_CATCH) ? 1 : 0;
+
+            // Update Session Model (Activity.c)
+            activity_update(&s_activity,
+                            dt_s,
+                            speed_mps,
+                            spm_raw,
+                            0.0f, // Power placeholder
+                            dist_delta_m,
+                            stroke_delta,
+                            gps_ok,
+                            (isfinite(s_last_valid_spm) && (t_s - s_last_spm_t_s) <= 12.0f));
+
+            // Calculate Session Averages
+            float avg_pace_s = (s_activity.avg_speed_mps > 0.1f) ? (500.0f / s_activity.avg_speed_mps) : 0.0f;
+
+            if (s_current_split_m > 0)
+            {
+                while ((s_activity.distance_m - s_split_anchor_m) >= (float)s_current_split_m)
+                {
+                    float dt_split = s_session_time_s - s_split_anchor_t;
+                    float split_pace = ((float)s_current_split_m > 0.1f)
+                                           ? (dt_split / ((float)s_current_split_m / 500.0f))
+                                           : NAN;
+                    s_last_split_delta = (isfinite(avg_pace_s) && avg_pace_s > 0.1f && isfinite(split_pace))
+                                             ? (split_pace - avg_pace_s)
+                                             : NAN;
+                    s_last_split_pace = split_pace;
+                    s_split_anchor_m += (float)s_current_split_m;
+                    s_split_anchor_t = s_session_time_s;
+                }
+            }
+
+            // Only log on CATCH
+            if (ev == STROKE_EVENT_CATCH)
+            {
+                ESP_LOGI(TAG, "CATCH n=%lu spm=%.1f axis=%d a=%.2f",
+                         (unsigned long)s_stroke.stroke_count,
+                         (double)m.spm, s_stroke.best_axis, (double)m.a_long_f);
+
+                // --- Populate the 16-Column Row ---
+
+                // 1. RTC Time
+                row.rtc_time = time(NULL);
+                // 2. Session Time
+                row.session_time_s = s_session_time_s;
+                // 3. Distance (Total)
+                row.total_distance_m = s_activity.distance_m;
+                // 4. Instant Pace
+                row.pace_500m_s = instant_pace_s;
+                // 5. SPM Instant
+                row.spm_instant = spm_raw;
+                // 6. Avg Pace
+                row.avg_pace_500m_s = avg_pace_s;
+                // 7. Avg Speed
+                row.avg_speed_mps = s_activity.avg_speed_mps;
+                // 8. Stroke Length
+                row.stroke_length_m = stroke_len_m;
+                // 9. Stroke Count
+                row.stroke_count = s_activity.stroke_count;
+                // 10. GPS Lat
+                row.gps_lat = gps_ok ? s_gps_lat : 0.0;
+                // 11. GPS Long
+                row.gps_lon = gps_ok ? s_gps_lon : 0.0;
+                // 12. Power
+                row.power_w = 0.0f;
+                // 13. Drive Time
+                row.drive_time_s = m.drive_time_s;
+                // 14. Recovery Time
+                row.recovery_time_s = m.recovery_time_s;
+                // 15. Recovery Ratio
+                row.recovery_ratio = recov_ratio;
+                sensor_hub_live_t live = {0};
+                sensor_hub_get_live(&live);
+                row.hr_bpm = live.hr_bpm;
+                row.pod_valid = live.pod_valid;
+                row.pod_catch_deg = (float)live.pod_catch_ddeg / 10.0f;
+                row.pod_finish_deg = (float)live.pod_finish_ddeg / 10.0f;
+                row.pod_arc_deg = (float)live.pod_arc_ddeg / 10.0f;
+
+                need_log = true;
+            }
+        }
+
+        if (s_activity_mutex)
+            xSemaphoreGive(s_activity_mutex);
+
+        if (need_log && s_log_q)
+        {
+            activity_log_msg_t msg = {0};
+            msg.row = row;
+            xQueueSend(s_log_q, &msg, 0);
+        }
+
+        bool recording = s_activity_recording;
+        TickType_t now = xTaskGetTickCount();
+        bool catch_ui = (ev == STROKE_EVENT_CATCH);
+        if (catch_ui || (now - last_ui_tick) >= ui_period)
+        {
+            last_ui_tick = now;
+
+            float spm_raw_ui = s_last_valid_spm;
+            if (s_last_spm_t_s > 0.0f && (t_s - s_last_spm_t_s) > 12.0f)
+                spm_raw_ui = NAN;
+            float spm_disp = spm_raw_ui;
+            if (isfinite(spm_disp))
+                spm_disp = ceilf(spm_disp * 2.0f) / 2.0f;
+
+            float pace = (speed_mps > 0.2f) ? (500.0f / speed_mps) : NAN;
+            float avg_pace_s = (recording && s_activity.avg_speed_mps > 0.1f)
+                                   ? (500.0f / s_activity.avg_speed_mps)
+                                   : NAN;
+            float stroke_len_disp = NAN;
+            if (recording && stroke_len_m > 0.01f)
+                stroke_len_disp = stroke_len_m;
+
+            coach_ui_snapshot_t snap = {
+                .seq = ++s_ui_seq,
+                .recording = recording,
+                .gps_connected = gps_connected,
+                .gps_ok = gps_ok,
+                .gps_stale = gps_connected && !gps_ok,
+                .gps_bars = gps_bars,
+                .battery_pct = 255,
+                .time_s = recording ? s_session_time_s : 0.0f,
+                .distance_m = recording ? s_activity.distance_m : 0.0f,
+                .pace_s_per_500m = pace,
+                .avg_pace_s_per_500m = avg_pace_s,
+                .speed_mps = gps_ok ? speed_mps : NAN,
+                .acceleration_mps2 = m.a_long,
+                .spm = spm_disp,
+                .stroke_len_m = stroke_len_disp,
+                .stroke_count = recording ? s_activity.stroke_count : UINT32_MAX,
+                .split_len_m = s_current_split_m,
+                .split_progress_m = recording ? (s_activity.distance_m - s_split_anchor_m) : NAN,
+                .last_split_pace_s = recording ? s_last_split_pace : NAN,
+                .last_split_delta_s = recording ? s_last_split_delta : NAN,
+            };
+            sensor_hub_live_t live_ui = {0};
+            sensor_hub_get_live(&live_ui);
+            snap.hr_bpm = live_ui.hr_bpm;
+            snap.sensor_link = sensor_link_from_live(&live_ui);
+            snap.pod_valid = live_ui.pod_valid;
+            snap.pod_catch_deg = (float)live_ui.pod_catch_ddeg / 10.0f;
+            snap.pod_finish_deg = (float)live_ui.pod_finish_ddeg / 10.0f;
+            snap.pod_arc_deg = (float)live_ui.pod_arc_ddeg / 10.0f;
+            coach_ui_snapshot_publish(&snap);
         }
 
         {

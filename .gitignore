@@ -2,9 +2,13 @@
 /build/
 /cmake-build-*/
 
-# Local IDE state and machine-specific Espressif installer configuration
+# Local IDE state and machine-specific configuration
 /.idea/
+/.vscode/
 /eim_config.toml
+*.log
+.DS_Store
+.cache/
 
 # Python-generated cache files
 __pycache__/
@@ -12,6 +16,8 @@ __pycache__/
 
 # Local ESP-IDF configuration
 /sdkconfig
+/sdkconfig.*
+!/sdkconfig.defaults
 /sdkconfig.old
 
 # Components downloaded by the ESP-IDF component manager

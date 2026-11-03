@@ -45,13 +45,21 @@ esp_err_t PCF85063_init(i2c_helper_t *i2c)
     xSemaphoreTake(s_lock, portMAX_DELAY);
     err = rtc_write(RTC_CTRL_1_ADDR, &ctrl1, 1);
     xSemaphoreGive(s_lock);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) {
+        (void)i2c_master_bus_rm_device(s_dev);
+        s_dev = NULL;
+        return err;
+    }
 
     // CTRL2 default = 0
     uint8_t ctrl2 = 0x00;
     xSemaphoreTake(s_lock, portMAX_DELAY);
     err = rtc_write(RTC_CTRL_2_ADDR, &ctrl2, 1);
     xSemaphoreGive(s_lock);
+    if (err != ESP_OK) {
+        (void)i2c_master_bus_rm_device(s_dev);
+        s_dev = NULL;
+    }
 
     return err;
 }

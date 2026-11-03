@@ -188,20 +188,25 @@ void ui_go_to_page(ui_page_t target, bool animated)
     }
     if (!ui_s_scr)
         return;
-    if ((target == UI_PAGE_MENU) && !ui_s_page_menu)
-        return;
-    if ((target == UI_SETTINGS_PAGE) && !ui_s_page_settings)
-        return;
-    if ((target == UI_ACTIVITY_SUMMARY_PAGE) && !ui_s_page_activity_summary)
-        return;
-    if ((target == UI_ACTIVITY_DETAIL_PAGE) && !ui_s_page_activity_detail)
-        return;
     if ((target == UI_PAGE_ACCELERATION) && !ui_s_page_acceleration)
         return;
     lvgl_port_lock(0);
-    if (target == UI_SENSORS_PAGE)
+    if (target == UI_PAGE_MENU)
+        ensure_menu_page();
+    else if (target == UI_SETTINGS_PAGE)
+        ensure_settings_page();
+    else if (target == UI_ACTIVITY_SUMMARY_PAGE)
+        ensure_activity_summary_page();
+    else if (target == UI_ACTIVITY_DETAIL_PAGE)
+        ensure_activity_detail_page();
+    else if (target == UI_SENSORS_PAGE)
         ensure_sensors_page();
-    if ((target == UI_SENSORS_PAGE) && !ui_s_page_sensors)
+
+    if (((target == UI_PAGE_MENU) && !ui_s_page_menu) ||
+        ((target == UI_SETTINGS_PAGE) && !ui_s_page_settings) ||
+        ((target == UI_ACTIVITY_SUMMARY_PAGE) && !ui_s_page_activity_summary) ||
+        ((target == UI_ACTIVITY_DETAIL_PAGE) && !ui_s_page_activity_detail) ||
+        ((target == UI_SENSORS_PAGE) && !ui_s_page_sensors))
     {
         lvgl_port_unlock();
         return;

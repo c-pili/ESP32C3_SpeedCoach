@@ -83,44 +83,75 @@ void app_main(void)
     /* The ESP-IDF Wi-Fi driver stores calibration/configuration in NVS. */
     ESP_ERROR_CHECK(nvs_helper_init());
 
+    /* Activity queues and callbacks are initialized before starting the Wi-Fi AP
+     * and UI so web requests and button presses are safe immediately. */
+    s_activity_mutex = xSemaphoreCreateMutex();
+    activity_init(&s_activity, 0);
+    s_session_time_s = 0.0f;
+    s_session_last_us = esp_timer_get_time();
+
+    uint32_t saved_split = nvs_helper_get_split_len();
+    s_current_split_m = saved_split;
+    activity_log_init(&s_act_log);
+    activity_log_set_split_interval(&s_act_log, saved_split);
+
+    s_act_q = xQueueCreate(4, sizeof(act_cmd_t));
+    ESP_ERROR_CHECK(s_act_q ? ESP_OK : ESP_ERR_NO_MEM);
+    s_log_q = xQueueCreate(LOG_QUEUE_LEN, sizeof(activity_log_msg_t));
+    ESP_ERROR_CHECK(s_log_q ? ESP_OK : ESP_ERR_NO_MEM);
+
+    wifi_export_set_callbacks(web_configure_workout, web_activity_ready, web_start_activity,
+                              ui_status_bar_read_battery_percent, web_start_sensor_hub);
+
     /* Bring up the AP before touching optional peripherals. This keeps the
      * configuration page reachable even when an IMU, GPS, RTC or LCD is absent. */
     esp_err_t ap_err = wifi_export_start();
     if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
 
-    /* Keep a bare-board Wi-Fi setup lightweight. The remote web UI remains
-     * available without the IMU; the local LVGL display is initialized only
-     * when the sensor board is present. */
     const bool imu_ready = init_imu();
     if (!imu_ready)
-        ESP_LOGW(TAG, "MPU6050 absent: using lightweight Wi-Fi session setup; stroke metrics unavailable");
+        ESP_LOGW(TAG, "MPU6050 absent at boot: stroke task will retry automatically");
 
-    if (s_imu_bus.bus) (void)PCF85063_init(&s_imu_bus);
-
-    /* Mount storage before optional UI/tasks consume the remaining internal
-     * RAM. A first boot may format the empty SPIFFS partition here. */
-    esp_err_t storage_err = flash_storage_mount(&s_storage);
-    if (storage_err != ESP_OK)
-    {
-        ESP_LOGW(TAG, "Flash activity storage mount failed: %s", esp_err_to_name(storage_err));
+    if (s_imu_bus.bus && PCF85063_init(&s_imu_bus) == ESP_OK) {
+        app_set_time_from_rtc();
     }
 
-    /* NimBLE starts after the phone has joined the AP and requested the page.
-     * This keeps its initial allocations and active scan away from Wi-Fi
-     * association. */
+    /* Initialize the Sharp LS027 display and LVGL regardless of IMU status so
+     * the screen always works on the breadboard. */
     esp_err_t display_err = ESP_ERR_NOT_SUPPORTED;
-    if (imu_ready &&
-        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) >= 20000)
+    if (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) >= 20000)
     {
         display_err = init_display_and_lvgl();
     }
-    else if (imu_ready)
+    else
     {
         ESP_LOGW(TAG, "Skipping local display: insufficient internal RAM (largest=%u)",
                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     }
-    const bool ui_ready = imu_ready && display_err == ESP_OK;
+    const bool ui_ready = (display_err == ESP_OK);
     s_ui_ready = ui_ready;
+
+    if (ui_ready) {
+        ui_init(s_disp);
+
+        const data_metric_t metrics[] = {
+            DATA_METRIC_PACE,
+            DATA_METRIC_TIME,
+            DATA_METRIC_SPM,
+            DATA_METRIC_HR,
+            DATA_METRIC_DISTANCE,
+        };
+        data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
+
+        bool saved_dark = nvs_helper_get_dark_mode();
+        ui_set_dark_mode(saved_dark);
+        /* The 400x240 memory LCD is landscape and the one-button UI has no
+         * orientation control, so keep the physical panel in landscape. */
+        ui_set_orientation(UI_ORIENT_LANDSCAPE_270);
+        ui_register_dark_mode_cb(on_dark_mode_setting_changed);
+        ui_register_auto_rotate_cb(on_auto_rotate_setting_changed);
+        app_pwr_key_setup();
+    }
 
     gps_neo_m8n_config_t gps_cfg = {
         .uart_num = UART_NUM_1,
@@ -136,77 +167,37 @@ void app_main(void)
     if (gps_err != ESP_OK)
         ESP_LOGW(TAG, "GPS unavailable: %s; Wi-Fi remains enabled", esp_err_to_name(gps_err));
 
-    app_set_time_from_rtc();
-
-    /* Activity queue must exist before pwr_key_task can post START/STOP.
-     * ui_init() is heavy; a PWR press during it used to hit xQueueSend(NULL). */
-    s_activity_mutex = xSemaphoreCreateMutex();
-    activity_init(&s_activity, 0);
-    s_session_time_s = 0.0f;
-    s_session_last_us = esp_timer_get_time();
-
-    s_act_q = xQueueCreate(4, sizeof(act_cmd_t));
-    ESP_ERROR_CHECK(s_act_q ? ESP_OK : ESP_ERR_NO_MEM);
-    s_log_q = xQueueCreate(LOG_QUEUE_LEN, sizeof(activity_log_msg_t));
-    ESP_ERROR_CHECK(s_log_q ? ESP_OK : ESP_ERR_NO_MEM);
-
     BaseType_t logger_ok = xTaskCreate(activity_logger_task, "activity_logger",
-                                       2048, NULL, 6, NULL);
+                                       3072, NULL, 6, NULL);
     BaseType_t worker_ok = xTaskCreate(activity_worker_task, "activity_worker",
                                        3072, NULL, 9, &s_act_worker_task);
     if (logger_ok != pdPASS || worker_ok != pdPASS) {
         ESP_LOGE(TAG, "Activity task creation failed (logger=%d worker=%d)",
                  (int)logger_ok, (int)worker_ok);
     }
-    if (ui_ready) {
-        /* Create UI in separate module */
-        ui_init(s_disp);
 
-        /* Fixed dashboard metrics for button-only operation. */
-        const data_metric_t metrics[] = {
-            DATA_METRIC_PACE,
-            DATA_METRIC_TIME,
-            DATA_METRIC_SPM,
-            DATA_METRIC_HR,
-            DATA_METRIC_DISTANCE,
-        };
-        data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
-    }
-    wifi_export_set_callbacks(web_configure_workout, web_activity_ready, web_start_activity,
-                              ui_status_bar_read_battery_percent, web_start_sensor_hub);
-
-    bool saved_dark = nvs_helper_get_dark_mode();
-    if (ui_ready) ui_set_dark_mode(saved_dark);
-    /* The 400x240 memory LCD is landscape and the one-button UI has no
-     * orientation control, so keep the physical panel in landscape. */
-    if (ui_ready) ui_set_orientation(UI_ORIENT_LANDSCAPE_270);
-    uint32_t saved_split = nvs_helper_get_split_len();
-    s_current_split_m = saved_split;
-    activity_log_init(&s_act_log);
-    activity_log_set_split_interval(&s_act_log, saved_split);
-
-    if (ui_ready) {
-        ui_register_dark_mode_cb(on_dark_mode_setting_changed);
-        ui_register_auto_rotate_cb(on_auto_rotate_setting_changed);
-    }
-
-    if (ui_ready) app_pwr_key_setup();
-
-    /* Created last, so it competes for whatever internal DRAM is left after
-     * LVGL/BLE. A silent pdFAIL here kills SPM with no other symptom. */
-    if (imu_ready) {
-        BaseType_t stroke_ok = xTaskCreatePinnedToCore(stroke_task, "stroke",
-                                                       3072, NULL, 3, NULL, 0);
-        if (stroke_ok != pdPASS) {
-            ESP_LOGE(TAG, "stroke task create FAILED, free internal=%u largest=%u",
-                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-        } else {
-            ESP_LOGI(TAG, "stroke task started, free internal=%u",
-                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-        }
+    /* Always start stroke_task so live UI snapshots (GPS, time, HR, and IMU
+     * strokes/acceleration) are published continuously. */
+    BaseType_t stroke_ok = xTaskCreatePinnedToCore(stroke_task, "stroke",
+                                                   3072, NULL, 3, NULL, 0);
+    if (stroke_ok != pdPASS) {
+        ESP_LOGE(TAG, "stroke task create FAILED, free internal=%u largest=%u",
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     } else {
-        ESP_LOGW(TAG, "Stroke task skipped; timed/free web sessions remain available");
+        ESP_LOGI(TAG, "stroke task started, free internal=%u",
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    }
+
+    /* Mount SPIFFS at idle priority so a first-boot partition format shares
+     * CPU 0 with IDLE0 and never triggers task_wdt or starves Wi-Fi/LVGL. */
+    UBaseType_t orig_prio = uxTaskPriorityGet(NULL);
+    vTaskPrioritySet(NULL, tskIDLE_PRIORITY);
+    esp_err_t storage_err = flash_storage_mount(&s_storage);
+    vTaskPrioritySet(NULL, orig_prio);
+    if (storage_err != ESP_OK)
+    {
+        ESP_LOGW(TAG, "Flash activity storage mount failed: %s", esp_err_to_name(storage_err));
     }
 
     /* app_main can idle */
