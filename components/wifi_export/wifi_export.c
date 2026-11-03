@@ -264,7 +264,7 @@ esp_err_t wifi_export_start(void)
                                                     WIFI_PROTOCOL_11B |
                                                     WIFI_PROTOCOL_11G |
                                                     WIFI_PROTOCOL_11N);
-    if (err == ESP_OK) err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+    if (err == ESP_OK) err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
     if (err == ESP_OK) err = esp_wifi_set_config(WIFI_IF_AP, &config);
     if (err == ESP_OK) err = esp_wifi_start();
     if (err != ESP_OK) return err;
