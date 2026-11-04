@@ -5,6 +5,16 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      custom_tag:
+        description: 'Tag de version manuel (optionnel, ex: v2.0)'
+        required: false
+        type: string
+      is_prerelease:
+        description: 'Marquer comme version bêta / pré-release'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -13,8 +23,48 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out source
+      - name: Check out source with history and submodules
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # Récupère tout l'historique Git pour calculer les tags et changelogs
+          submodules: recursive   # Récupère tous les sous-modules Git si présents
+
+      - name: Ensure required directories exist
+        run: |
+          mkdir -p storage_image
+
+      - name: Determine next version tag
+        id: versioning
+        run: |
+          # Récupérer tous les tags existants
+          git fetch --tags --force
+          
+          # Trouver le dernier tag au format vX.Y
+          LATEST_TAG=$(git tag -l "v*" | sort -V | tail -n 1)
+          
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_TAG="v1.0"
+          else
+            # Extraire le numéro majeur et mineur (ex: v1.4 -> MAJOR=1, MINOR=4)
+            VERSION_NUM=$(echo "$LATEST_TAG" | sed 's/^v//')
+            MAJOR=$(echo "$VERSION_NUM" | cut -d. -f1)
+            MINOR=$(echo "$VERSION_NUM" | cut -d. -f2)
+            
+            # Si le numéro mineur est absent, initialiser à 0
+            if [ -z "$MINOR" ]; then MINOR=0; fi
+            
+            NEW_MINOR=$((MINOR + 1))
+            NEW_TAG="v${MAJOR}.${NEW_MINOR}"
+          fi
+          
+          # Si un tag personnalisé est fourni via workflow_dispatch, l'utiliser
+          IF_CUSTOM="${{ inputs.custom_tag }}"
+          if [ -n "$IF_CUSTOM" ]; then
+            NEW_TAG="$IF_CUSTOM"
+          fi
+          
+          echo "RELEASE_TAG=$NEW_TAG" >> $GITHUB_ENV
+          echo "Version calculée : $NEW_TAG"
 
       - name: Build ESP32-C3 firmware
         uses: espressif/esp-idf-ci-action@v1
@@ -26,14 +76,30 @@ jobs:
             cd build &&
             esptool.py --chip esp32c3 merge_bin --flash_mode dio --flash_freq 80m --flash_size 4MB -o ../firmware.bin @flash_args
 
-      - name: Publish release for this commit
+      - name: Upload Build Artifacts to Action Run
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32c3-firmware-${{ env.RELEASE_TAG }}
+          path: |
+            firmware.bin
+            build/storage.bin
+          retention-days: 7
+
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: commit-${{ github.sha }}
+          TAG: ${{ env.RELEASE_TAG }}
+          PRERELEASE: ${{ inputs.is_prerelease }}
         run: |
+          EXTRA_FLAGS=""
+          if [ "$PRERELEASE" = "true" ]; then
+            EXTRA_FLAGS="--prerelease"
+          fi
+
           gh release create "$TAG" \
             firmware.bin \
             build/storage.bin \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Firmware $GITHUB_SHA" \
-            --generate-notes
+            --title "SpeedCoach Firmware $TAG" \
+            --generate-notes \
+            $EXTRA_FLAGS
