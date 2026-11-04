@@ -1,6 +1,6 @@
 #include "app_context.h"
 
-activity_storage_t s_storage;
+activity_storage_t s_storage = {.mounted = false, .mount_point = NULL};
 QueueHandle_t s_act_q = NULL;
 TaskHandle_t s_act_worker_task = NULL;
 volatile bool s_activity_recording = false;
