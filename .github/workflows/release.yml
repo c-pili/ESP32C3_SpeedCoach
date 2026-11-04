@@ -32,6 +32,7 @@ jobs:
       - name: Ensure required directories exist
         run: |
           mkdir -p storage_image
+          mkdir -p build
 
       - name: Determine next version tag
         id: versioning
@@ -74,7 +75,9 @@ jobs:
           command: >-
             idf.py build &&
             cd build &&
-            esptool.py --chip esp32c3 merge_bin --flash_mode dio --flash_freq 80m --flash_size 4MB -o ../firmware.bin @flash_args
+            esptool.py --chip esp32c3 merge_bin --flash_mode dio --flash_freq 80m --flash_size 4MB -o ../firmware.bin @flash_args &&
+            cd .. &&
+            dd if=/dev/zero of=storage_image/storage.bin bs=1024 count=1960 status=none
 
       - name: Upload Build Artifacts to Action Run
         uses: actions/upload-artifact@v4
@@ -82,7 +85,7 @@ jobs:
           name: esp32c3-firmware-${{ env.RELEASE_TAG }}
           path: |
             firmware.bin
-            build/storage.bin
+            storage_image/storage.bin
           retention-days: 7
 
       - name: Publish GitHub Release
@@ -98,7 +101,7 @@ jobs:
 
           gh release create "$TAG" \
             firmware.bin \
-            build/storage.bin \
+            storage_image/storage.bin \
             --repo "$GITHUB_REPOSITORY" \
             --title "SpeedCoach Firmware $TAG" \
             --generate-notes \
