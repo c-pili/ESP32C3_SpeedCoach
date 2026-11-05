@@ -4,7 +4,7 @@ activity_storage_t s_storage = {.mounted = false, .mount_point = NULL};
 QueueHandle_t s_act_q = NULL;
 TaskHandle_t s_act_worker_task = NULL;
 volatile bool s_activity_recording = false;
-activity_t s_activity;
+activity_t s_activity = {0};
 uint32_t s_activity_next_id = 1;
 
 float s_session_time_s = 0.0f;
@@ -14,15 +14,15 @@ uint32_t s_last_session_stroke_count = 0;
 SemaphoreHandle_t s_activity_mutex = NULL;
 
 QueueHandle_t s_log_q = NULL;
-activity_log_t s_act_log;
+activity_log_t s_act_log = {0};
 uint32_t s_current_split_m = 1000;
 wifi_workout_config_t s_workout_config = {.mode = WIFI_WORKOUT_FREE};
 
 lv_disp_t *s_disp = NULL;
 
-mpu6050_handle_t s_imu;
-i2c_helper_t s_imu_bus;
-stroke_detection_t s_stroke;
+mpu6050_handle_t s_imu = {0};
+i2c_helper_t s_imu_bus = {0};
+stroke_detection_t s_stroke = {0};
 
 ui_orientation_t s_current_orient = UI_ORIENT_LANDSCAPE_270;
 bool s_auto_rotate_enabled = false;
