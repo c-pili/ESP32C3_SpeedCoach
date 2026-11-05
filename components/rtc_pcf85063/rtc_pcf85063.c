@@ -7,7 +7,7 @@
 datetime_t datetime = {0};
 
 static i2c_master_dev_handle_t s_dev = NULL;
-static SemaphoreHandle_t s_lock;
+static SemaphoreHandle_t s_lock = NULL;
 
 static uint8_t decToBcd(int val)
 {

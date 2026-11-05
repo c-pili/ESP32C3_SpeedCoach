@@ -53,7 +53,7 @@ typedef enum {
     PEND_CONNECT,
 } pend_t;
 
-static SemaphoreHandle_t s_mux;
+static SemaphoreHandle_t s_mux = NULL;
 static uint32_t s_epoch;
 static uint8_t s_own_addr_type;
 static bool s_synced;

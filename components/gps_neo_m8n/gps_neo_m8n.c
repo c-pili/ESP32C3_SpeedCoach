@@ -15,11 +15,11 @@
 
 static const char *TAG = "gps_neo_m8n";
 
-static gps_fix_t s_latest;
-static SemaphoreHandle_t s_lock;
+static gps_fix_t s_latest = {0};
+static SemaphoreHandle_t s_lock = NULL;
 
-static gps_neo_m8n_cb_t s_cb;
-static void *s_cb_user;
+static gps_neo_m8n_cb_t s_cb = NULL;
+static void *s_cb_user = NULL;
 
 static int s_uart = -1;
 

@@ -9,7 +9,7 @@ static const char *TAG = "i2c_helper";
 #define I2C_XFER_TIMEOUT_MS 20
 #define I2C_LOCK_TIMEOUT_MS 20
 
-static SemaphoreHandle_t s_xfer_lock;
+static SemaphoreHandle_t s_xfer_lock = NULL;
 
 static SemaphoreHandle_t xfer_lock(void)
 {

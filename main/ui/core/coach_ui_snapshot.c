@@ -6,9 +6,9 @@
 #include <math.h>
 #include <string.h>
 
-static SemaphoreHandle_t s_lock;
-static coach_ui_snapshot_t s_snap;
-static bool s_valid;
+static SemaphoreHandle_t s_lock = NULL;
+static coach_ui_snapshot_t s_snap = {0};
+static bool s_valid = false;
 
 void coach_ui_snapshot_init(void)
 {

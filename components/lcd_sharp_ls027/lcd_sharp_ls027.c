@@ -20,8 +20,8 @@
 
 static const char *TAG = "lcd_sharp_ls027";
 
-static spi_device_handle_t s_spi;
-static SemaphoreHandle_t s_bus_lock;
+static spi_device_handle_t s_spi = NULL;
+static SemaphoreHandle_t s_bus_lock = NULL;
 static bool s_vcom;
 static bool s_initialized;
 static uint8_t s_framebuffer[LCD_V_RES][LCD_BYTES_PER_LINE];
