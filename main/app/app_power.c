@@ -2,6 +2,7 @@
 
 #include "app_activity.h"
 #include "app_context.h"
+#include "esp_sleep.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_err.h"
@@ -66,6 +67,10 @@ void on_shutdown_confirmed(void)
     gps_neo_m8n_power_down();
     mpu6050_sleep(&s_imu);
     pwr_key_set_hold(false);
+    
+    /* Allow time for power latch to cut power, then enter deep sleep as fallback */
+    vTaskDelay(pdMS_TO_TICKS(100));
+    esp_deep_sleep_start();
 }
 
 static void pwr_evt_cb(pwr_key_event_t evt, void *user)
