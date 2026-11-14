@@ -44,6 +44,7 @@ typedef struct
     bool retry_prev;
     uint16_t avg_hr;
     float avg_spm;
+    float total_distance_m;
     activity_store_split_t rows[PAGE_ROWS + 1];
 } detail_load_result_t;
 
@@ -451,6 +452,7 @@ static void detail_load_task(void *arg)
             }
             res->avg_hr = summary.avg_hr;
             res->avg_spm = summary.avg_spm;
+            res->total_distance_m = summary.total_distance_m;
         }
 
         lv_async_call(apply_load_result_async, res);
@@ -709,6 +711,30 @@ void activity_detail_page_open(uint32_t activity_id, const char *csv_path)
     request_load();
 }
 
+static lv_obj_t *create_summary_box(lv_obj_t *parent, const char *title, lv_obj_t **out_lbl)
+{
+    lv_obj_t *box = lv_obj_create(parent);
+    lv_obj_set_size(box, lv_pct(30), lv_pct(100));
+    lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(box, 0, 0);
+    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(box, 2, 0);
+    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *t = lv_label_create(box);
+    lv_label_set_text(t, title);
+    ui_theme_apply_label(t, true);
+    lv_obj_set_style_text_font(t, &lv_font_montserrat_14, 0);
+
+    *out_lbl = lv_label_create(box);
+    lv_label_set_text(*out_lbl, "--");
+    ui_theme_apply_label(*out_lbl, false);
+    lv_obj_set_style_text_font(*out_lbl, &lv_font_num_32, 0);
+
+    return box;
+}
+
 void activity_detail_page_create(lv_obj_t *parent)
 {
     // page background (must cover what's behind)
@@ -782,29 +808,6 @@ void activity_detail_page_create(lv_obj_t *parent)
     lv_obj_set_flex_align(s_summary_row, LV_FLEX_ALIGN_SPACE_EVENLY,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(s_summary_row, LV_OBJ_FLAG_SCROLLABLE);
-
-    auto create_summary_box = [](lv_obj_t *parent, const char *title, lv_obj_t **out_lbl) {
-        lv_obj_t *box = lv_obj_create(parent);
-        lv_obj_set_size(box, lv_pct(30), lv_pct(100));
-        lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(box, 0, 0);
-        lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_row(box, 2, 0);
-        lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-
-        lv_obj_t *t = lv_label_create(box);
-        lv_label_set_text(t, title);
-        ui_theme_apply_label(t, true);
-        lv_obj_set_style_text_font(t, &lv_font_montserrat_14, 0);
-
-        *out_lbl = lv_label_create(box);
-        lv_label_set_text(*out_lbl, "--");
-        ui_theme_apply_label(*out_lbl, false);
-        lv_obj_set_style_text_font(*out_lbl, &lv_font_num_32, 0);
-
-        return box;
-    };
 
     create_summary_box(s_summary_row, "Dist", &s_summary_dist);
     create_summary_box(s_summary_row, "Avg HR", &s_summary_hr);

@@ -72,19 +72,6 @@ static void fmt_time_hms(char *out, size_t n, uint32_t sec)
     snprintf(out, n, "%02lu:%02lu:%02lu", (unsigned long)h, (unsigned long)m, (unsigned long)s);
 }
 
-static void fmt_pace_500(char *out, size_t n, float pace_s_per500)
-{
-    if (pace_s_per500 <= 0.1f)
-    {
-        snprintf(out, n, "--:--/500");
-        return;
-    }
-    uint32_t sec = (uint32_t)(pace_s_per500 + 0.5f);
-    uint32_t mm = sec / 60;
-    uint32_t ss = sec % 60;
-    snprintf(out, n, "%lu:%02lu/500", (unsigned long)mm, (unsigned long)ss);
-}
-
 static void fmt_dist(char *out, size_t n, float m)
 {
     if (m < 0.1f)
