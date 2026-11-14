@@ -454,3 +454,17 @@ bool gps_neo_m8n_get_latest(gps_fix_t *out)
     xSemaphoreGive(s_lock);
     return true;
 }
+
+// Send NMEA command to put GPS into power save mode ($PGCMD,66,0)
+// This reduces power consumption from ~50mA to ~1mA
+void gps_neo_m8n_power_down(void)
+{
+    if (s_uart < 0)
+        return;
+    // $PGCMD,66,0 sets power save mode (1Hz, low power)
+    // $PGCMD,66,1 would restore full power
+    const char *cmd_power_save = "$PGCMD,66,0\r\n";
+    uart_write_bytes(s_uart, cmd_power_save, strlen(cmd_power_save));
+    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI(TAG, "GPS power save mode enabled");
+}

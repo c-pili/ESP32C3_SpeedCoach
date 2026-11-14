@@ -46,6 +46,7 @@ typedef void (*gps_neo_m8n_cb_t)(const gps_fix_t *fix, void *user);
 esp_err_t gps_neo_m8n_init(const gps_neo_m8n_config_t *cfg);
 esp_err_t gps_neo_m8n_set_callback(gps_neo_m8n_cb_t cb, void *user);
 bool      gps_neo_m8n_get_latest(gps_fix_t *out);
+void      gps_neo_m8n_power_down(void);
 
 #ifdef __cplusplus
 }

@@ -18,15 +18,15 @@
 #define AP_SSID "SpeedCoach_Wi-Fi"
 #define AP_PASSWORD "SpeedCoach"
 static const char *TAG = "wifi_export";
-static httpd_handle_t s_server;
-static bool s_wifi_initialized;
-static bool s_netif_initialized;
-static wifi_config_callback_t s_config_cb;
-static wifi_activity_ready_callback_t s_activity_ready_cb;
-static wifi_activity_callback_t s_activity_cb;
-static wifi_battery_callback_t s_battery_cb;
-static wifi_sensor_start_callback_t s_sensor_start_cb;
-static bool s_sensor_start_attempted;
+static httpd_handle_t s_server = NULL;
+static bool s_wifi_initialized = false;
+static bool s_netif_initialized = false;
+static wifi_config_callback_t s_config_cb = NULL;
+static wifi_activity_ready_callback_t s_activity_ready_cb = NULL;
+static wifi_activity_callback_t s_activity_cb = NULL;
+static wifi_battery_callback_t s_battery_cb = NULL;
+static wifi_sensor_start_callback_t s_sensor_start_cb = NULL;
+static bool s_sensor_start_attempted = false;
 
 void wifi_export_set_callbacks(wifi_config_callback_t config_cb,
                                wifi_activity_ready_callback_t ready_cb,
@@ -50,7 +50,7 @@ static esp_err_t index_handler(httpd_req_t *req)
     } else {
         httpd_resp_sendstr_chunk(req, "<form action=/config><h2>Préparer une séance</h2><label>Type <select name=mode><option value=0>Libre</option><option value=1>Temps unique</option><option value=2>Distance unique</option><option value=3>Intervalles</option></select></label><p>Durée (min) <input name=duration type=number min=1 value=30></p><p>Distance (m) <input name=distance type=number min=1 value=1000></p><p>Travail (s) <input name=work type=number min=1 value=60></p><p>Repos (s) <input name=rest type=number min=1 value=60></p><p>Répétitions <input name=reps type=number min=1 value=8></p><label>Affichage <select name=display><option value=0>Allure, temps, cadence, distance</option><option value=1>Vitesse, temps, cadence, distance</option><option value=2>Courbe d'accélération en direct</option></select></label><p><button>Enregistrer la séance</button></p></form><p><a href=/start>Démarrer cette séance</a></p>");
     }
-    httpd_resp_sendstr_chunk(req, "<p>Suunto Watch HR 1029 : <span id=hr>vérification...</span></p><script>function refresh(){fetch('/api/status').then(r=>r.json()).then(x=>document.getElementById('b').textContent=x.battery_pct===null?'indisponible':x.battery_pct+' %'+(x.charging===null?' (charge inconnue)':x.charging?' (en charge)':''));fetch('/api/sensors').then(r=>r.json()).then(x=>document.getElementById('hr').textContent=!x.available?'Bluetooth indisponible':x.connected?(x.bpm===null?'Connectée, BPM en attente — activer HR Broadcast':'Connectée · '+x.bpm+' bpm'):x.scanning?'Recherche de cette montre…':x.connecting?'Connexion à cette montre…':x.saved?'Montre mémorisée · reconnexion en cours':x.seen?'Montre détectée, connexion en attente ou échouée':'Montre non détectée');}refresh();setInterval(refresh,5000);</script><h2>Activités enregistrées</h2><p>Choisissez un fichier TCX :</p><ul>");
+    httpd_resp_sendstr_chunk(req, "<p>Suunto Watch HR 1029 : <span id=hr>vérification...</span></p><script>function refresh(){fetch('/api/status').then(r=>r.json()).then(x=>document.getElementById('b').textContent=x.battery_pct===null?'indisponible':x.battery_pct+' %'+(x.charging===null?' (charge inconnue)':x.charging?' (en charge)':''));fetch('/api/sensors').then(r=>r.json()).then(x=>document.getElementById('hr').textContent=!x.available?'Bluetooth indisponible':x.connected?'Connectée':x.scanning?'Recherche de cette montre…':x.connecting?'Connexion à cette montre…':x.saved?'Montre mémorisée · reconnexion en cours':x.seen?'Montre détectée, connexion en attente ou échouée':'Montre non détectée');}refresh();setInterval(refresh,5000);</script><h2>Activités enregistrées</h2><p>Choisissez un fichier TCX :</p><ul>");
     DIR *activities = opendir(ACTIVITY_DIR);
     if (activities) {
         struct dirent *activity;
@@ -108,25 +108,14 @@ static esp_err_t sensors_handler(httpd_req_t *req)
         sensor_hub_get_live(&live);
     }
     char body[128];
-    if (live.hr_bpm) {
-        snprintf(body, sizeof(body),
-                 "{\"available\":%s,\"connected\":%s,\"connecting\":%s,\"saved\":%s,\"scanning\":%s,\"seen\":%s,\"bpm\":%u}",
-                 available ? "true" : "false",
-                 live.hr_connected ? "true" : "false",
-                 slot.state == SENSOR_HUB_CONNECTING ? "true" : "false",
-                 slot.saved ? "true" : "false",
-                 scanning ? "true" : "false",
-                 slot.name[0] ? "true" : "false", (unsigned)live.hr_bpm);
-    } else {
-        snprintf(body, sizeof(body),
-                 "{\"available\":%s,\"connected\":%s,\"connecting\":%s,\"saved\":%s,\"scanning\":%s,\"seen\":%s,\"bpm\":null}",
-                 available ? "true" : "false",
-                 live.hr_connected ? "true" : "false",
-                 slot.state == SENSOR_HUB_CONNECTING ? "true" : "false",
-                 slot.saved ? "true" : "false",
-                 scanning ? "true" : "false",
-                 slot.name[0] ? "true" : "false");
-    }
+    snprintf(body, sizeof(body),
+             "{\"available\":%s,\"connected\":%s,\"connecting\":%s,\"saved\":%s,\"scanning\":%s,\"seen\":%s}",
+             available ? "true" : "false",
+             live.hr_connected ? "true" : "false",
+             slot.state == SENSOR_HUB_CONNECTING ? "true" : "false",
+             slot.saved ? "true" : "false",
+             scanning ? "true" : "false",
+             slot.name[0] ? "true" : "false");
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, body);
 }

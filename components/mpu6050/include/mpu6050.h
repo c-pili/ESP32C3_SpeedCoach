@@ -19,3 +19,4 @@ esp_err_t mpu6050_read_gyro(mpu6050_handle_t *imu,
 esp_err_t mpu6050_read_accel_gyro(mpu6050_handle_t *imu,
                                   float *ax_mps2, float *ay_mps2, float *az_mps2,
                                   float *gx_rads, float *gy_rads, float *gz_rads);
+void      mpu6050_sleep(mpu6050_handle_t *imu);

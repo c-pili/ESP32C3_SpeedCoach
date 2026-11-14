@@ -7,6 +7,8 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "gps_neo_m8n.h"
+#include "mpu6050.h"
 #include "pwr_key.h"
 #include "ui.h"
 
@@ -31,6 +33,9 @@ void on_shutdown_confirmed(void)
             vTaskDelay(pdMS_TO_TICKS(20));
         }
     }
+    // Put GPS and IMU into low-power mode before cutting power
+    gps_neo_m8n_power_down();
+    mpu6050_sleep(&s_imu);
     pwr_key_set_hold(false);
 }
 

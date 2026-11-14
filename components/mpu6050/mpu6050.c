@@ -105,3 +105,17 @@ esp_err_t mpu6050_read_gyro(mpu6050_handle_t *imu,
 {
     return mpu6050_read_accel_gyro(imu, NULL, NULL, NULL, gx_rads, gy_rads, gz_rads);
 }
+
+// Put MPU6050 into sleep mode to reduce power consumption (~0.5uA)
+// Writes SLEEP bit (bit 6) to PWR_MGMT_1 register (0x6B)
+void mpu6050_sleep(mpu6050_handle_t *imu)
+{
+    if (!imu || !imu->dev)
+        return;
+    esp_err_t err = write8(imu, REG_PWR_MGMT_1, 0x40);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "MPU6050 sleep mode enabled");
+    } else {
+        ESP_LOGW(TAG, "MPU6050 sleep failed: %s", esp_err_to_name(err));
+    }
+}
