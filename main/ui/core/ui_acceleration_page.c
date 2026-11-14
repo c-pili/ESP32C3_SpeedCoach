@@ -1,5 +1,6 @@
 #include "ui_acceleration_page.h"
 #include "ui_theme.h"
+#include "ui_typography.h"
 #include <math.h>
 
 static lv_chart_series_t *s_series = NULL;
