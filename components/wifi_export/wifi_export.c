@@ -406,5 +406,15 @@ esp_err_t wifi_export_stop(void)
         s_dns_task = NULL;
     }
     if (s_server) { httpd_stop(s_server); s_server = NULL; }
-    return s_wifi_initialized ? esp_wifi_stop() : ESP_OK;
+    if (s_wifi_initialized) {
+        esp_err_t err = esp_wifi_stop();
+        if (err == ESP_OK) {
+            err = esp_wifi_deinit();
+            if (err == ESP_OK) {
+                s_wifi_initialized = false;
+            }
+        }
+        return err;
+    }
+    return ESP_OK;
 }
