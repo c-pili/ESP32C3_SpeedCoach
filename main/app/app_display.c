@@ -22,7 +22,8 @@ esp_err_t init_display_and_lvgl(void)
 
     ESP_LOGI(TAG, "Init LVGL port...");
     lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    lvgl_cfg.task_stack = 6144; /* Keep the local display optional on the ESP32-C3. */
+    lvgl_cfg.task_stack = 8192; /* Increased stack for Sharp LCD full-frame flush */
+    lvgl_cfg.task_priority = 5; /* Lower priority to not starve Wi-Fi/other tasks */
     err = lvgl_port_init(&lvgl_cfg);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "LVGL unavailable (%s); continuing without local display", esp_err_to_name(err));
@@ -37,15 +38,5 @@ esp_err_t init_display_and_lvgl(void)
     }
     lv_disp_set_default(s_disp);
     ESP_LOGI(TAG, "Display and LVGL initialized successfully");
-
-    // Test: draw a simple pattern to verify display works
-    ESP_LOGI(TAG, "Drawing test pattern...");
-    lv_obj_t *scr = lv_scr_act();
-    lv_obj_t *label = lv_label_create(scr);
-    lv_label_set_text(label, "SpeedCoach\nDisplay OK!");
-    lv_obj_center(label);
-    lv_refr_now(s_disp);
-    ESP_LOGI(TAG, "Test pattern drawn");
-
     return ESP_OK;
 }
