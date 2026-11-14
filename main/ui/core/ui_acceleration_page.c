@@ -64,6 +64,7 @@ void acceleration_page_add_sample(float acceleration_mps2)
         if (value < -50) value = -50;
         if (value > 50) value = 50;
         lv_chart_set_next_value(s_chart, s_series, value);
+        lv_obj_invalidate(s_chart);
     }
 }
 
@@ -75,6 +76,7 @@ void acceleration_page_set_hr(uint8_t hr_bpm)
         } else {
             lv_label_set_text(s_hr_label, "HR: --");
         }
+        lv_obj_invalidate(s_chart);
     }
 }
 
@@ -86,5 +88,6 @@ void acceleration_page_set_spm(float spm)
         } else {
             lv_label_set_text(s_spm_label, "SPM: --");
         }
+        lv_obj_invalidate(s_chart);
     }
 }
