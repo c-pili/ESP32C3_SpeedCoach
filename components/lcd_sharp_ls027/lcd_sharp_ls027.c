@@ -22,8 +22,8 @@ static const char *TAG = "lcd_sharp_ls027";
 
 static spi_device_handle_t s_spi = NULL;
 static SemaphoreHandle_t s_bus_lock = NULL;
-static bool s_vcom;
-static bool s_initialized;
+static bool s_vcom = false;
+static bool s_initialized = false;
 static uint8_t s_framebuffer[LCD_V_RES][LCD_BYTES_PER_LINE];
 _Alignas(4) static uint8_t s_draw_buf1[LCD_H_RES * LCD_DRAW_LINES * 2];
 _Alignas(4) static uint8_t s_draw_buf2[LCD_H_RES * LCD_DRAW_LINES * 2];

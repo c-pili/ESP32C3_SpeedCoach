@@ -2,23 +2,23 @@
 
 static lv_disp_t *s_disp = NULL;
 static ui_theme_t s_theme = UI_THEME_LIGHT;
-static ui_theme_palette_t s_palette;
+static ui_theme_palette_t s_palette = {0};
 
 static bool s_styles_inited = false;
-static lv_style_t s_style_screen;
-static lv_style_t s_style_surface;
-static lv_style_t s_style_surface_border;
-static lv_style_t s_style_text;
-static lv_style_t s_style_text_muted;
-static lv_style_t s_style_button;
-static lv_style_t s_style_button_pressed;
-static lv_style_t s_style_button_sec;
-static lv_style_t s_style_button_sec_pressed;
-static lv_style_t s_style_switch_track;
-static lv_style_t s_style_switch_track_checked;
-static lv_style_t s_style_switch_knob;
-static lv_style_t s_style_tile;
-static lv_style_t s_style_tile_pressed;
+static lv_style_t s_style_screen = {0};
+static lv_style_t s_style_surface = {0};
+static lv_style_t s_style_surface_border = {0};
+static lv_style_t s_style_text = {0};
+static lv_style_t s_style_text_muted = {0};
+static lv_style_t s_style_button = {0};
+static lv_style_t s_style_button_pressed = {0};
+static lv_style_t s_style_button_sec = {0};
+static lv_style_t s_style_button_sec_pressed = {0};
+static lv_style_t s_style_switch_track = {0};
+static lv_style_t s_style_switch_track_checked = {0};
+static lv_style_t s_style_switch_knob = {0};
+static lv_style_t s_style_tile = {0};
+static lv_style_t s_style_tile_pressed = {0};
 
 static ui_theme_palette_t palette_light(void)
 {

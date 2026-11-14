@@ -54,23 +54,23 @@ typedef enum {
 } pend_t;
 
 static SemaphoreHandle_t s_mux = NULL;
-static uint32_t s_epoch;
-static uint8_t s_own_addr_type;
-static bool s_synced;
-static bool s_available;
-static gap_phase_t s_gap;
-static sensor_kind_t s_scan_kind;
-static sensor_kind_t s_connecting_kind;
-static pend_t s_pend;
-static sensor_kind_t s_pend_kind;
-static sensor_hub_device_t s_pend_dev;
+static uint32_t s_epoch = 0;
+static uint8_t s_own_addr_type = 0;
+static bool s_synced = false;
+static bool s_available = false;
+static gap_phase_t s_gap = GAP_IDLE;
+static sensor_kind_t s_scan_kind = SENSOR_KIND_NONE;
+static sensor_kind_t s_connecting_kind = SENSOR_KIND_NONE;
+static pend_t s_pend = PEND_NONE;
+static sensor_kind_t s_pend_kind = SENSOR_KIND_NONE;
+static sensor_hub_device_t s_pend_dev = {0};
 
-static sensor_slot_t s_slots[SENSOR_KIND_COUNT];
-static sensor_hub_device_t s_found[SENSOR_HUB_MAX_RESULTS];
-static size_t s_found_n;
+static sensor_slot_t s_slots[SENSOR_KIND_COUNT] = {0};
+static sensor_hub_device_t s_found[SENSOR_HUB_MAX_RESULTS] = {0};
+static size_t s_found_n = 0;
 
-static struct ble_npl_callout s_hr_reconn;
-static bool s_callout_ready;
+static struct ble_npl_callout s_hr_reconn = {0};
+static bool s_callout_ready = false;
 
 static int gap_event(struct ble_gap_event *event, void *arg);
 static void arm_hr_if_needed(void);

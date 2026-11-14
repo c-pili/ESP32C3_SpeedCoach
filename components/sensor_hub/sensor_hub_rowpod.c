@@ -29,13 +29,13 @@ static const ble_uuid128_t s_uuid_ctrl =
 #define SUMMARY_LEN 20
 #define FLAG_VALID  0x04
 
-static uint16_t s_svc_start;
-static uint16_t s_svc_end;
-static uint16_t s_summary_handle;
-static uint16_t s_ctrl_handle;
-static uint16_t s_cfg_start;
-static uint16_t s_cfg_end;
-static bool s_cccd_armed;
+static uint16_t s_svc_start = 0;
+static uint16_t s_svc_end = 0;
+static uint16_t s_summary_handle = 0;
+static uint16_t s_ctrl_handle = 0;
+static uint16_t s_cfg_start = 0;
+static uint16_t s_cfg_end = 0;
+static bool s_cccd_armed = false;
 static sensor_slot_t *s_slot = NULL;
 
 static bool slot_live(uint16_t conn)

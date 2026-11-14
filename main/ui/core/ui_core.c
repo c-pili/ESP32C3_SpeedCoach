@@ -62,10 +62,10 @@ static void coach_ui_tick(lv_timer_t *t)
 {
     (void)t;
 
-    static coach_ui_snapshot_t s_held;
-    static bool s_held_valid;
-    static uint32_t s_applied_seq;
-    static bool s_applied_once;
+    static coach_ui_snapshot_t s_held = {0};
+    static bool s_held_valid = false;
+    static uint32_t s_applied_seq = 0;
+    static bool s_applied_once = false;
 
     coach_ui_snapshot_t snap;
     bool copied = coach_ui_snapshot_copy(&snap);

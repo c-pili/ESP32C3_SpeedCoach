@@ -30,8 +30,8 @@
 #include "app/app_time.h"
 
 static const char *TAG = "app";
-static bool s_ui_ready;
-static bool s_sensor_hub_init_attempted;
+static bool s_ui_ready = false;
+static bool s_sensor_hub_init_attempted = false;
 
 #define LOG_QUEUE_LEN 32
 
