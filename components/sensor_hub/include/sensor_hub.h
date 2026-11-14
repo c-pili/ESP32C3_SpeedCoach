@@ -12,7 +12,8 @@ extern "C" {
 
 /* One connection slot per sensor kind. Values double as NVS slot indices. */
 typedef enum {
-    SENSOR_KIND_HR = 0,
+    SENSOR_KIND_NONE = 0,
+    SENSOR_KIND_HR,
     SENSOR_KIND_ROWPOD,
     SENSOR_KIND_COUNT,
 } sensor_kind_t;
