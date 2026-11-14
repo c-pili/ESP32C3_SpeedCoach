@@ -61,7 +61,7 @@ static lv_obj_t *s_nav_row = NULL;
 static lv_obj_t *s_btn_prev = NULL;
 static lv_obj_t *s_btn_next = NULL;
 static lv_obj_t *s_page_lbl = NULL;
-static ui_status_bar_t s_status;
+static ui_status_bar_t s_status = {0};
 static lv_obj_t *s_hdr_lbl[4] = {0};
 
 static void request_load(void);

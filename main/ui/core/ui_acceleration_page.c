@@ -2,9 +2,9 @@
 #include "ui_theme.h"
 #include <math.h>
 
-static lv_chart_series_t *s_series;
-static lv_obj_t *s_chart;
-static lv_obj_t *s_title;
+static lv_chart_series_t *s_series = NULL;
+static lv_obj_t *s_chart = NULL;
+static lv_obj_t *s_title = NULL;
 
 void acceleration_page_create(lv_obj_t *parent)
 {

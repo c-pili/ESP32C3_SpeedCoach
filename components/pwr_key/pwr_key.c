@@ -4,7 +4,7 @@
 #include "esp_timer.h"
 #include <limits.h>
 
-static pwr_key_config_t s_cfg;
+static pwr_key_config_t s_cfg = {0};
 static pwr_key_cb_t s_cb = NULL;
 static void *s_user = NULL;
 

@@ -38,7 +38,7 @@ static size_t s_page_index = 0;
 static size_t s_total_pages = 1;
 
 static lv_obj_t *s_root = NULL;
-static ui_status_bar_t s_status;
+static ui_status_bar_t s_status = {0};
 static lv_obj_t *s_list = NULL;
 static lv_obj_t *s_empty_lbl = NULL;
 static lv_obj_t *s_nav_row = NULL;

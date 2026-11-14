@@ -33,8 +33,8 @@ typedef struct {
 } sensor_card_t;
 
 static lv_obj_t *s_root = NULL;
-static ui_status_bar_t s_sb;
-static sensor_card_t s_cards[SENSOR_KIND_COUNT];
+static ui_status_bar_t s_sb = {0};
+static sensor_card_t s_cards[SENSOR_KIND_COUNT] = {0};
 static lv_obj_t *s_list = NULL;
 static lv_timer_t *s_timer = NULL;
 static ui_page_t s_return_page = UI_PAGE_MENU;

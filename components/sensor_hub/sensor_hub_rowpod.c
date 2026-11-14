@@ -36,7 +36,7 @@ static uint16_t s_ctrl_handle;
 static uint16_t s_cfg_start;
 static uint16_t s_cfg_end;
 static bool s_cccd_armed;
-static sensor_slot_t *s_slot;
+static sensor_slot_t *s_slot = NULL;
 
 static bool slot_live(uint16_t conn)
 {

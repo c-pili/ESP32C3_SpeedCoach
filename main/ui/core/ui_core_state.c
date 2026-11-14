@@ -16,4 +16,4 @@ bool ui_s_transitioning = false;
 ui_dark_mode_cb_t ui_s_dark_mode_cb = NULL;
 ui_auto_rotate_cb_t ui_s_auto_rotate_cb = NULL;
 bool ui_s_dark_mode = true;
-ui_status_bar_t ui_s_live_status;
+ui_status_bar_t ui_s_live_status = {0};

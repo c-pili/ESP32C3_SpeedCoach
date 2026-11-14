@@ -26,7 +26,7 @@ static lv_obj_t *s_btns[MENU_ICON_COUNT] = {0};
 static uint8_t s_btn_count = 0;
 
 static lv_obj_t *s_root = NULL;
-static ui_status_bar_t s_status;
+static ui_status_bar_t s_status = {0};
 
 static void activity_summary_refresh_async(void *p)
 {

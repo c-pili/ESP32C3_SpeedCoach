@@ -16,7 +16,7 @@ static const char *TAG = "ui_status_bar";
 
 #define UI_STATUS_BAR_MAX 8
 
-static ui_status_bar_t *s_bars[UI_STATUS_BAR_MAX];
+static ui_status_bar_t *s_bars[UI_STATUS_BAR_MAX] = {0};
 static uint8_t s_bar_count = 0;
 static ui_status_bar_t *s_default_bar = NULL;
 
