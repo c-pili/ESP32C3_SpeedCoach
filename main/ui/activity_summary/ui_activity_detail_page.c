@@ -1,6 +1,7 @@
 #include "ui_activity_detail_page.h"
 #include "ui_status_bar.h"
 #include "ui_theme.h"
+#include "ui_typography.h"
 #include "activity_store.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -730,7 +731,7 @@ static lv_obj_t *create_summary_box(lv_obj_t *parent, const char *title, lv_obj_
     *out_lbl = lv_label_create(box);
     lv_label_set_text(*out_lbl, "--");
     ui_theme_apply_label(*out_lbl, false);
-    lv_obj_set_style_text_font(*out_lbl, &lv_font_num_32, 0);
+    lv_obj_set_style_text_font(*out_lbl, ui_font_value_sm(), 0);
 
     return box;
 }
