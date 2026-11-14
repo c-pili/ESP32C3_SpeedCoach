@@ -93,6 +93,7 @@ static void vcom_task(void *arg)
 
 esp_err_t lcd_sharp_ls027_init(void)
 {
+    ESP_LOGI(TAG, ">>> ENTERING lcd_sharp_ls027_init <<<");
     if (s_initialized) return ESP_OK;
     ESP_LOGI(TAG, "Starting LCD init (SPI2_HOST, SCLK=%d, MOSI=%d, SCS=%d, CLK=%d)...",
              CONFIG_LCD_SHARP_PIN_SCLK, CONFIG_LCD_SHARP_PIN_MOSI, CONFIG_LCD_SHARP_PIN_SCS, CONFIG_LCD_SHARP_SPI_CLOCK_HZ);
