@@ -45,6 +45,8 @@ static esp_err_t sharp_send(const uint8_t *data, size_t len)
     esp_rom_delay_us(4); /* Meet thSCS >= 2 us hold time and 220 us data-update minimum. */
     gpio_set_level(CONFIG_LCD_SHARP_PIN_SCS, 0);
     esp_rom_delay_us(2); /* Sharp twSCSL >= 2 us minimum SCS low time between transactions. */
+    /* Yield to watchdog after each SPI transaction */
+    vTaskDelay(0);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "SPI transmit failed: %s", esp_err_to_name(err));
     }
@@ -195,10 +197,8 @@ static void sharp_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_t
                     ESP_LOGE(TAG, "line %ld write failed: %s", (long)y, esp_err_to_name(err));
                     break;
                 }
-                /* Yield every 16 lines to feed the task watchdog */
-                if ((y & 0xF) == 0) {
-                    vTaskDelay(pdMS_TO_TICKS(1));
-                }
+                /* Yield after EVERY line to feed the task watchdog */
+                vTaskDelay(0);
             }
             xSemaphoreGive(s_bus_lock);
         }

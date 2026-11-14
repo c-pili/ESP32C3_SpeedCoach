@@ -168,12 +168,6 @@ void app_main(void)
         ui_register_auto_rotate_cb(on_auto_rotate_setting_changed);
         app_pwr_key_setup();
         ESP_LOGI(TAG, "UI initialized successfully");
-
-        // ADDITIONAL TEST: force a screen update after UI init
-        ESP_LOGI(TAG, "Forcing LVGL render after UI init...");
-        lv_refr_now(s_disp);
-        vTaskDelay(pdMS_TO_TICKS(500));
-        ESP_LOGI(TAG, "Post-UI render done");
     }
 
     gps_neo_m8n_config_t gps_cfg = {
