@@ -179,7 +179,7 @@ void app_main(void)
     /* Always start stroke_task so live UI snapshots (GPS, time, HR, and IMU
      * strokes/acceleration) are published continuously. */
     BaseType_t stroke_ok = xTaskCreatePinnedToCore(stroke_task, "stroke",
-                                                   3072, NULL, 3, NULL, 0);
+                                                   4608, NULL, 3, NULL, 0);
     if (stroke_ok != pdPASS) {
         ESP_LOGE(TAG, "stroke task create FAILED, free internal=%u largest=%u",
                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),

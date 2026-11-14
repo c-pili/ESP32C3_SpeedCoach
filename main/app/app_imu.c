@@ -522,11 +522,12 @@ void stroke_task(void *arg)
             TickType_t hb_now = xTaskGetTickCount();
             if ((hb_now - last_hb) >= pdMS_TO_TICKS(1000)) {
                 last_hb = hb_now;
-                ESP_LOGI("STROKE", "surge=%.2f thr=%.2f axis=%d phase=%d n=%lu spm=%.1f rec=%d",
+                ESP_LOGI("STROKE", "surge=%.2f thr=%.2f axis=%d phase=%d n=%lu spm=%.1f rec=%d stk=%u",
                          (double)s_stroke.last_s0, (double)s_stroke.last_thr,
                          s_stroke.best_axis, s_stroke.phase,
                          (unsigned long)s_stroke.stroke_count,
-                         (double)s_last_valid_spm, (int)s_activity_recording);
+                         (double)s_last_valid_spm, (int)s_activity_recording,
+                         (unsigned)uxTaskGetStackHighWaterMark(NULL));
             }
         }
         xTaskDelayUntil(&last_wake, sample_delay);
