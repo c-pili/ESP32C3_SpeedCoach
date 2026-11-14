@@ -173,6 +173,8 @@ static void sharp_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_t
     int32_t y2 = area->y2 >= LCD_V_RES ? LCD_V_RES - 1 : area->y2;
     int32_t area_width = area->x2 - area->x1 + 1;
 
+    ESP_LOGI(TAG, "FLUSH: area (%ld,%ld)-(%ld,%ld)", (long)x1, (long)y1, (long)x2, (long)y2);
+
     if (area_width > 0 && x1 <= x2 && y1 <= y2) {
         for (int32_t y = y1; y <= y2; y++) {
             int32_t src_y = y - area->y1;
