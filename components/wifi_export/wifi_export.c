@@ -130,8 +130,8 @@ static void on_ip_event(void *arg, esp_event_base_t base, int32_t id, void *data
 {
     (void)arg;
     (void)base;
-    if (id == IP_EVENT_AP_STAIPASSIGNED) {
-        ip_event_ap_staipassigned_t *event = (ip_event_ap_staipassigned_t *)data;
+    if (id == IP_EVENT_ASSIGNED_IP_TO_CLIENT) {
+        ip_event_assigned_ip_to_client_t *event = (ip_event_assigned_ip_to_client_t *)data;
         ESP_LOGI(TAG, "DHCP: Assigned IP " IPSTR " to client", IP2STR(&event->ip));
     }
 }
@@ -360,7 +360,7 @@ esp_err_t wifi_export_start(void)
     if (err == ESP_OK) err = esp_wifi_start();
     if (err != ESP_OK) return err;
     (void)esp_wifi_set_ps(WIFI_PS_NONE);
-    (void)esp_event_handler_register(IP_EVENT, IP_EVENT_AP_STAIPASSIGNED, on_ip_event, NULL);
+    (void)esp_event_handler_register(IP_EVENT, IP_EVENT_ASSIGNED_IP_TO_CLIENT, on_ip_event, NULL);
     httpd_config_t http_config = HTTPD_DEFAULT_CONFIG();
     http_config.lru_purge_enable = true;
     http_config.max_open_sockets = 4;
