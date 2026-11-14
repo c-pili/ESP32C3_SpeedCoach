@@ -237,7 +237,7 @@ void activity_worker_task(void *arg)
 
             /* Show summary for the saved activity */
             if (s_disp && snapshot_base[0] != '\0') {
-                char rel_path[160];
+                char rel_path[256];
                 snprintf(rel_path, sizeof(rel_path), "%s/%s_tcx.tcx", snapshot_base, snapshot_base);
                 if (lvgl_port_lock(0)) {
                     activity_summary_page_refresh();
