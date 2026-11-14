@@ -210,7 +210,7 @@ static void build_slot(int idx)
     lv_label_set_text(s_slot_title[idx], "?");
 
     s_slot_value[idx] = lv_label_create(s_slot_box[idx]);
-    lv_obj_set_style_text_font(s_slot_value[idx], idx == 0 ? ui_font_value_lg() : ui_font_value_sm(), 0);
+    lv_obj_set_style_text_font(s_slot_value[idx], ui_font_value_sm(), 0);
     ui_theme_apply_label(s_slot_value[idx], false);
     lv_obj_align(s_slot_value[idx], LV_ALIGN_CENTER, 0, 4);
     lv_label_set_text(s_slot_value[idx], "--");
@@ -231,7 +231,7 @@ static void apply_layout(void)
     lv_obj_set_style_border_width(s_root, 0, 0);
 
     for (int i = 0; i < DATA_SLOT_MAX; i++) {
-        lv_obj_set_style_text_font(s_slot_value[i], i == 0 ? ui_font_value_lg() : ui_font_value_sm(), 0);
+        lv_obj_set_style_text_font(s_slot_value[i], ui_font_value_sm(), 0);
     }
 
     lv_obj_set_grid_dsc_array(s_root, s_col_dsc, s_row_dsc);

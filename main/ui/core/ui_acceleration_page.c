@@ -4,6 +4,8 @@
 
 static lv_chart_series_t *s_series = NULL;
 static lv_obj_t *s_chart = NULL;
+static lv_obj_t *s_hr_label = NULL;
+static lv_obj_t *s_spm_label = NULL;
 
 void acceleration_page_create(lv_obj_t *parent)
 {
@@ -18,6 +20,21 @@ void acceleration_page_create(lv_obj_t *parent)
     lv_chart_set_all_values(s_chart, s_series, 0);
     lv_obj_set_style_border_width(s_chart, 0, 0);
     lv_obj_set_style_pad_all(s_chart, 0, 0);
+
+    /* BPM top-left */
+    s_hr_label = lv_label_create(s_chart);
+    lv_obj_set_style_text_font(s_hr_label, ui_font_value_lg(), 0);
+    ui_theme_apply_label(s_hr_label, false);
+    lv_obj_align(s_hr_label, LV_ALIGN_TOP_LEFT, 8, 8);
+    lv_label_set_text(s_hr_label, "HR: --");
+
+    /* SPM top-right */
+    s_spm_label = lv_label_create(s_chart);
+    lv_obj_set_style_text_font(s_spm_label, ui_font_value_lg(), 0);
+    ui_theme_apply_label(s_spm_label, false);
+    lv_obj_align(s_spm_label, LV_ALIGN_TOP_RIGHT, -8, 8);
+    lv_label_set_text(s_spm_label, "SPM: --");
+
     acceleration_page_apply_theme();
 }
 
@@ -31,6 +48,12 @@ void acceleration_page_apply_theme(void)
         }
         lv_chart_refresh(s_chart);
     }
+    if (s_hr_label) {
+        ui_theme_apply_label(s_hr_label, false);
+    }
+    if (s_spm_label) {
+        ui_theme_apply_label(s_spm_label, false);
+    }
 }
 
 void acceleration_page_add_sample(float acceleration_mps2)
@@ -40,5 +63,27 @@ void acceleration_page_add_sample(float acceleration_mps2)
         if (value < -50) value = -50;
         if (value > 50) value = 50;
         lv_chart_set_next_value(s_chart, s_series, value);
+    }
+}
+
+void acceleration_page_set_hr(uint8_t hr_bpm)
+{
+    if (s_hr_label) {
+        if (hr_bpm > 0) {
+            lv_label_set_text_fmt(s_hr_label, "HR: %d", hr_bpm);
+        } else {
+            lv_label_set_text(s_hr_label, "HR: --");
+        }
+    }
+}
+
+void acceleration_page_set_spm(float spm)
+{
+    if (s_spm_label) {
+        if (isfinite(spm) && spm > 0) {
+            lv_label_set_text_fmt(s_spm_label, "SPM: %.0f", spm);
+        } else {
+            lv_label_set_text(s_spm_label, "SPM: --");
+        }
     }
 }

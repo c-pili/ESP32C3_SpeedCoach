@@ -43,6 +43,7 @@ typedef struct
     bool ok;
     bool retry_prev;
     uint16_t avg_hr;
+    float avg_spm;
     activity_store_split_t rows[PAGE_ROWS + 1];
 } detail_load_result_t;
 
@@ -53,6 +54,7 @@ static bool s_loader_ready = false;
 // UI handles
 static lv_obj_t *s_root = NULL;
 static lv_obj_t *s_name_lbl = NULL; // activity name under status bar
+static lv_obj_t *s_summary_row = NULL; // summary with dist/hr/spm
 static lv_obj_t *s_hdr_row = NULL;  // frozen header row container
 static lv_obj_t *s_scroller = NULL; // content container holding table + nav
 static lv_obj_t *s_tbl = NULL;      // split rows only (no header row inside)
@@ -63,6 +65,9 @@ static lv_obj_t *s_btn_next = NULL;
 static lv_obj_t *s_page_lbl = NULL;
 static ui_status_bar_t s_status = {0};
 static lv_obj_t *s_hdr_lbl[4] = {0};
+static lv_obj_t *s_summary_dist = NULL;
+static lv_obj_t *s_summary_hr = NULL;
+static lv_obj_t *s_summary_spm = NULL;
 
 static void request_load(void);
 
@@ -372,6 +377,26 @@ static void apply_load_result_async(void *p)
         }
         lv_label_set_text(s_name_lbl, buf);
     }
+    /* Update summary row */
+    if (s_summary_dist && lv_obj_is_valid(s_summary_dist)) {
+        char dist[24];
+        activity_store_format_dist(dist, sizeof(dist), res->total_distance_m);
+        lv_label_set_text(s_summary_dist, dist);
+    }
+    if (s_summary_hr && lv_obj_is_valid(s_summary_hr)) {
+        if (res->avg_hr > 0) {
+            lv_label_set_text_fmt(s_summary_hr, "%u bpm", (unsigned)res->avg_hr);
+        } else {
+            lv_label_set_text(s_summary_hr, "--");
+        }
+    }
+    if (s_summary_spm && lv_obj_is_valid(s_summary_spm)) {
+        if (res->avg_spm > 0.1f) {
+            lv_label_set_text_fmt(s_summary_spm, "%.0f", (double)res->avg_spm);
+        } else {
+            lv_label_set_text(s_summary_spm, "--");
+        }
+    }
     free(res);
 }
 
@@ -425,6 +450,7 @@ static void detail_load_task(void *arg)
                 res->total_rows = total;
             }
             res->avg_hr = summary.avg_hr;
+            res->avg_spm = summary.avg_spm;
         }
 
         lv_async_call(apply_load_result_async, res);
@@ -745,6 +771,45 @@ void activity_detail_page_create(lv_obj_t *parent)
     lv_obj_set_style_text_color(next_lbl, ui_theme_palette()->accent_text, 0);
     lv_obj_align(next_lbl, LV_ALIGN_CENTER, 0, 0);
 
+    /* Summary row: Distance | Avg HR | Avg SPM */
+    s_summary_row = lv_obj_create(s_root);
+    lv_obj_set_width(s_summary_row, lv_pct(100));
+    lv_obj_set_height(s_summary_row, 56);
+    lv_obj_set_style_bg_opa(s_summary_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_summary_row, 0, 0);
+    lv_obj_set_style_pad_all(s_summary_row, 8, 0);
+    lv_obj_set_flex_flow(s_summary_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_summary_row, LV_FLEX_ALIGN_SPACE_EVENLY,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(s_summary_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    auto create_summary_box = [](lv_obj_t *parent, const char *title, lv_obj_t **out_lbl) {
+        lv_obj_t *box = lv_obj_create(parent);
+        lv_obj_set_size(box, lv_pct(30), lv_pct(100));
+        lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(box, 0, 0);
+        lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_row(box, 2, 0);
+        lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *t = lv_label_create(box);
+        lv_label_set_text(t, title);
+        ui_theme_apply_label(t, true);
+        lv_obj_set_style_text_font(t, &lv_font_montserrat_14, 0);
+
+        *out_lbl = lv_label_create(box);
+        lv_label_set_text(*out_lbl, "--");
+        ui_theme_apply_label(*out_lbl, false);
+        lv_obj_set_style_text_font(*out_lbl, &lv_font_num_32, 0);
+
+        return box;
+    };
+
+    create_summary_box(s_summary_row, "Dist", &s_summary_dist);
+    create_summary_box(s_summary_row, "Avg HR", &s_summary_hr);
+    create_summary_box(s_summary_row, "Avg SPM", &s_summary_spm);
+
     s_hdr_row = lv_obj_create(s_root);
     lv_obj_set_width(s_hdr_row, lv_pct(100));
     lv_obj_set_height(s_hdr_row, 18);
@@ -857,6 +922,18 @@ void activity_detail_page_apply_theme(void)
         ui_theme_apply_label(s_page_lbl, true);
     if (s_name_lbl)
         ui_theme_apply_label(s_name_lbl, false);
+    if (s_summary_row) {
+        ui_theme_apply_surface(s_summary_row);
+        if (s_summary_dist) ui_theme_apply_label(s_summary_dist, false);
+        if (s_summary_hr) ui_theme_apply_label(s_summary_hr, false);
+        if (s_summary_spm) ui_theme_apply_label(s_summary_spm, false);
+        lv_obj_t *title_dist = lv_obj_get_child(lv_obj_get_parent(s_summary_dist), 0);
+        lv_obj_t *title_hr = lv_obj_get_child(lv_obj_get_parent(s_summary_hr), 0);
+        lv_obj_t *title_spm = lv_obj_get_child(lv_obj_get_parent(s_summary_spm), 0);
+        if (title_dist) ui_theme_apply_label(title_dist, true);
+        if (title_hr) ui_theme_apply_label(title_hr, true);
+        if (title_spm) ui_theme_apply_label(title_spm, true);
+    }
     if (s_tbl) {
         lv_obj_set_style_bg_color(s_tbl, ui_theme_palette()->surface, LV_PART_ITEMS);
         lv_obj_set_style_text_color(s_tbl, ui_theme_palette()->text, LV_PART_ITEMS);

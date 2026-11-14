@@ -285,6 +285,8 @@ esp_err_t activity_store_load_splits_page(const char *in_path_or_base,
     float last_total_dist = 0.0f;
     uint32_t hr_sum = 0;
     uint16_t hr_n = 0;
+    float spm_sum = 0.0f;
+    uint16_t spm_n = 0;
 
     const bool fast_page_only = (out_total_count == NULL && out_summary == NULL);
 
@@ -337,6 +339,10 @@ esp_err_t activity_store_load_splits_page(const char *in_path_or_base,
                 hr_n++;
             }
         }
+        if (row.avg_spm > 0.0f && spm_n < UINT16_MAX) {
+            spm_sum += row.avg_spm;
+            spm_n++;
+        }
         float dt = 0.0f;
         if (parse_hms_ms(row.split_time_str, &dt)) {
             total_time_s += dt;
@@ -368,6 +374,7 @@ esp_err_t activity_store_load_splits_page(const char *in_path_or_base,
             out_summary->avg_pace_s_per500 = 0.0f;
         }
         out_summary->avg_hr = (hr_n > 0) ? (uint16_t)(hr_sum / hr_n) : 0;
+        out_summary->avg_spm = (spm_n > 0) ? (spm_sum / (float)spm_n) : 0.0f;
     }
 
     // If file had data but we stored 0 (max_rows=0) still OK.

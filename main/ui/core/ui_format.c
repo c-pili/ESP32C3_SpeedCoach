@@ -6,17 +6,11 @@
 void ui_fmt_time_s(float sec, char *out, size_t out_len)
 {
     if (!isfinite(sec) || sec < 0.0f) {
-        snprintf(out, out_len, "--:--.-");
+        snprintf(out, out_len, "--:--");
         return;
     }
 
     int total = (int)sec;
-    int tenths = (int)lroundf((sec - (float)total) * 10.0f);
-    if (tenths >= 10) {
-        tenths = 0;
-        total += 1;
-    }
-
     int s = total % 60;
     int m = (total / 60) % 60;
     int h = total / 3600;
@@ -24,7 +18,7 @@ void ui_fmt_time_s(float sec, char *out, size_t out_len)
     if (h > 0) {
         snprintf(out, out_len, "%d:%02d:%02d", h, m, s);
     } else {
-        snprintf(out, out_len, "%02d:%02d.%d", m, s, tenths);
+        snprintf(out, out_len, "%02d:%02d", m, s);
     }
 }
 

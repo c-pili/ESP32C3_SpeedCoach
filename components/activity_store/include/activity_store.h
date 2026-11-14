@@ -28,6 +28,7 @@ typedef struct {
     float total_time_s;        // sum(split_time)
     float avg_pace_s_per500;   // derived: total_time / (total_dist/500)
     uint16_t avg_hr;           /* 0 when the log has no heart-rate samples */
+    float avg_spm;             /* 0 when the log has no SPM samples */
 } activity_store_summary_t;
 
 esp_err_t activity_store_resolve_paths(const char *in_path_or_base,

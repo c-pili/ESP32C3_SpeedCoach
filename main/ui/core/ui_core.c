@@ -87,6 +87,8 @@ static void coach_ui_tick(lv_timer_t *t)
     }
     overlay_session_time(&snap);
     acceleration_page_add_sample(snap.acceleration_mps2);
+    acceleration_page_set_hr(snap.hr_bpm);
+    acceleration_page_set_spm(snap.spm);
 
     bool full = !s_applied_once || (copied && snap.seq != s_applied_seq);
     if (full) {

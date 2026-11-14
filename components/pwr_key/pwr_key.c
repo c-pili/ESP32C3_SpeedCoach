@@ -131,6 +131,11 @@ esp_err_t pwr_key_init(const pwr_key_config_t *cfg, pwr_key_cb_t cb, void *user)
     };
     ESP_ERROR_CHECK(gpio_config(&out));
 
+    /* Immediately latch power on so the external power circuit keeps the ESP32 powered.
+     * This must happen as early as possible after boot. */
+    gpio_set_level(s_cfg.hold_gpio, 1);
+    s_hold_state = true;
+
     xTaskCreate(pwr_key_task, "pwr_key", 4096, NULL, 10, NULL);
     return ESP_OK;
 }
