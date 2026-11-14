@@ -1,6 +1,7 @@
 #include "ui_core_internal.h"
 
 #include "esp_lvgl_port.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ui_activity_detail_page.h"
@@ -9,6 +10,22 @@
 #include "ui_menu_page.h"
 #include "ui_settings_page.h"
 #include "ui_sensors_page.h"
+
+static const char *TAG = "ui";
+
+static const char *page_name(ui_page_t p)
+{
+    switch (p) {
+    case UI_PAGE_DATA: return "DATA";
+    case UI_PAGE_MENU: return "MENU";
+    case UI_ACTIVITY_SUMMARY_PAGE: return "ACTIVITY_SUMMARY";
+    case UI_SETTINGS_PAGE: return "SETTINGS";
+    case UI_ACTIVITY_DETAIL_PAGE: return "ACTIVITY_DETAIL";
+    case UI_SENSORS_PAGE: return "SENSORS";
+    case UI_PAGE_ACCELERATION: return "ACCELERATION";
+    default: return "UNKNOWN";
+    }
+}
 
 static void anim_set_y(void *var, int32_t v) { lv_obj_set_y((lv_obj_t *)var, (lv_coord_t)v); }
 
@@ -178,6 +195,7 @@ void ui_go_to_page(ui_page_t target, bool animated)
 {
     if (target == ui_s_current_page)
         return;
+    ESP_LOGI(TAG, "page change: %s -> %s animated=%d", page_name(ui_s_current_page), page_name(target), animated);
     /* Confirm during MENU->setup animation used to drop SETUP->live nav,
      * leaving the start overlay on the setup page so PWR was ignored. */
     if (ui_s_transitioning)

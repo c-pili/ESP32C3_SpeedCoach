@@ -574,7 +574,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             if (identified) {
                 char name_buf[32] = {0};
                 copy_name(name_buf, sizeof(name_buf), fields.name, fields.name_len);
-                ESP_LOGD(TAG, "SCAN_RSP: %s kind=%d rssi=%d", name_buf, classify(&fields), event->disc.rssi);
+                ESP_LOGI(TAG, "SCAN_RSP: %s kind=%d rssi=%d", name_buf, classify(&fields), event->disc.rssi);
             }
             upsert_result(&event->disc, &fields, identified);
         } else if (event->disc.event_type == BLE_HCI_ADV_RPT_EVTYPE_ADV_IND ||
@@ -988,6 +988,7 @@ esp_err_t sensor_hub_forget(sensor_kind_t kind)
 esp_err_t sensor_hub_pause_hr(void)
 {
     if (!s_mux || !s_available) return ESP_ERR_INVALID_STATE;
+    ESP_LOGI(TAG, "pause HR");
     xSemaphoreTake(s_mux, portMAX_DELAY);
     sensor_slot_t *slot = &s_slots[SENSOR_KIND_HR];
     slot->paused = true;
@@ -1000,6 +1001,7 @@ esp_err_t sensor_hub_pause_hr(void)
 esp_err_t sensor_hub_resume_hr(void)
 {
     if (!s_mux || !s_available) return ESP_ERR_INVALID_STATE;
+    ESP_LOGI(TAG, "resume HR");
     xSemaphoreTake(s_mux, portMAX_DELAY);
     sensor_slot_t *slot = &s_slots[SENSOR_KIND_HR];
     slot->paused = false;
