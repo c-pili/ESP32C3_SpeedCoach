@@ -383,6 +383,30 @@ void ui_go_to_page(ui_page_t target, bool animated)
         to_y = -h;
         next_page = UI_SETTINGS_PAGE;
     }
+    // DATA -> ACCELERATION
+    else if (target == UI_PAGE_ACCELERATION && ui_s_current_page == UI_PAGE_DATA)
+    {
+        anim_obj = ui_s_page_acceleration;
+        lv_obj_clear_flag(anim_obj, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_y(anim_obj, -h);
+        lv_obj_move_foreground(anim_obj);
+        from_y = -h;
+        to_y = 0;
+        next_page = UI_PAGE_ACCELERATION;
+    }
+    // ACCELERATION -> DATA
+    else if (target == UI_PAGE_DATA && ui_s_current_page == UI_PAGE_ACCELERATION)
+    {
+        if (ui_s_page_data)
+        {
+            lv_obj_clear_flag(ui_s_page_data, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_pos(ui_s_page_data, 0, 0);
+        }
+        anim_obj = ui_s_page_acceleration;
+        from_y = 0;
+        to_y = -h;
+        next_page = UI_PAGE_DATA;
+    }
     else
     {
         // Not handled yet (future pages)
