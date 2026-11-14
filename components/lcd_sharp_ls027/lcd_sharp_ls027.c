@@ -96,8 +96,7 @@ esp_err_t lcd_sharp_ls027_init(void)
     ESP_RETURN_ON_FALSE(s_bus_lock, ESP_ERR_NO_MEM, TAG, "mutex allocation failed");
 
     gpio_config_t gpio_cfg = {
-        .pin_bit_mask = (1ULL << CONFIG_LCD_SHARP_PIN_SCS) |
-                        (1ULL << CONFIG_LCD_SHARP_PIN_DISP),
+        .pin_bit_mask = (1ULL << CONFIG_LCD_SHARP_PIN_SCS),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -105,7 +104,7 @@ esp_err_t lcd_sharp_ls027_init(void)
     };
     ESP_RETURN_ON_ERROR(gpio_config(&gpio_cfg), TAG, "GPIO setup failed");
     ESP_RETURN_ON_ERROR(gpio_set_level(CONFIG_LCD_SHARP_PIN_SCS, 0), TAG, "SCS low failed");
-    ESP_RETURN_ON_ERROR(gpio_set_level(CONFIG_LCD_SHARP_PIN_DISP, 0), TAG, "DISP low failed");
+    // DISP is hardwired to 3.3V on ESP32-C3 Super Mini — always enabled.
 
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = CONFIG_LCD_SHARP_PIN_MOSI,
@@ -136,7 +135,7 @@ esp_err_t lcd_sharp_ls027_init(void)
     xSemaphoreGive(s_bus_lock);
     ESP_RETURN_ON_ERROR(err, TAG, "panel clear failed");
     vTaskDelay(pdMS_TO_TICKS(50)); /* Allow at least one frame for pixel-memory initialization. */
-    ESP_RETURN_ON_ERROR(gpio_set_level(CONFIG_LCD_SHARP_PIN_DISP, 1), TAG, "DISP enable failed");
+    // DISP is hardwired to 3.3V — no GPIO toggle needed.
 
     s_initialized = true;
     if (xTaskCreate(vcom_task, "lcd_vcom", 2048, NULL, 4, NULL) != pdPASS) {
@@ -207,5 +206,6 @@ lv_display_t *lcd_sharp_ls027_add_lvgl_display(void)
 
 void lcd_sharp_ls027_set_display_enabled(bool enabled)
 {
-    if (s_initialized) gpio_set_level(CONFIG_LCD_SHARP_PIN_DISP, enabled ? 1 : 0);
+    // DISP is hardwired to 3.3V on ESP32-C3 Super Mini — display is always on.
+    (void)enabled;
 }

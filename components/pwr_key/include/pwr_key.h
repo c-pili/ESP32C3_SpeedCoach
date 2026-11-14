@@ -16,8 +16,8 @@ typedef enum {
 typedef void (*pwr_key_cb_t)(pwr_key_event_t evt, void *user);
 
 typedef struct {
-    gpio_num_t key_gpio;        // e.g. GPIO_NUM_6
-    gpio_num_t hold_gpio;       // e.g. GPIO_NUM_7
+    gpio_num_t key_gpio;        // e.g. GPIO_NUM_5 (ESP32-C3 Super Mini)
+    gpio_num_t hold_gpio;       // e.g. GPIO_NUM_10 (ESP32-C3 Super Mini)
     bool key_active_low;        // true if pressed==0
 
     uint32_t debounce_ms;       // e.g. 30

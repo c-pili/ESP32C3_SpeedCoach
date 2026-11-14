@@ -8,17 +8,15 @@ config LCD_SHARP_PIN_SCLK
 config LCD_SHARP_PIN_MOSI
     int "SI/MOSI GPIO"
     range 0 21
-    default 5
+    default 6
 
 config LCD_SHARP_PIN_SCS
     int "SCS GPIO (active high)"
     range 0 21
-    default 10
+    default 7
 
-config LCD_SHARP_PIN_DISP
-    int "DISP GPIO"
-    range 0 21
-    default 3
+# DISP is hardwired to 3.3V on ESP32-C3 Super Mini; no GPIO needed.
+# CONFIG_LCD_SHARP_PIN_DISP is not set
 
 config LCD_SHARP_SPI_CLOCK_HZ
     int "SPI clock (Hz; maximum 2 MHz)"

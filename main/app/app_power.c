@@ -83,9 +83,10 @@ static void pwr_evt_cb(pwr_key_event_t evt, void *user)
 void app_pwr_key_setup(void)
 {
     // Start the power key task
+    // GPIO 6 and 7 are used by the Sharp LCD (MOSI/SCS) on ESP32-C3 Super Mini.
     pwr_key_config_t cfg = {
-        .key_gpio = GPIO_NUM_6,
-        .hold_gpio = GPIO_NUM_7,
+        .key_gpio = GPIO_NUM_5,
+        .hold_gpio = GPIO_NUM_10,
         .key_active_low = true,
         .debounce_ms = 30,
         .poll_ms = 20,
