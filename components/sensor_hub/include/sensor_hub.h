@@ -77,6 +77,10 @@ void sensor_hub_get_live(sensor_hub_live_t *out);
 esp_err_t sensor_hub_rowpod_zero(void);
 esp_err_t sensor_hub_rowpod_set_side(bool bow);
 
+/** Pause/resume HR sensor (for WiFi activity to save CPU/RAM) */
+esp_err_t sensor_hub_pause_hr(void);
+esp_err_t sensor_hub_resume_hr(void);
+
 #ifdef __cplusplus
 }
 #endif

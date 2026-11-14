@@ -108,18 +108,19 @@ static bool is_primary_hr_watch(const char *name)
         name++;
         target++;
     }
-    return *name == '\0' && *target == '\0';
+    return *target == '\0'; /* Name starts with target, allow trailing chars */
 }
 
 static bool adv_name_is_primary_hr_watch(const uint8_t *name, uint8_t name_len)
 {
     static const char target[] = "Suunto Watch HR 1029";
-    if (!name || name_len != sizeof(target) - 1) return false;
-    for (size_t i = 0; i < name_len; i++) {
+    size_t target_len = sizeof(target) - 1;
+    if (!name || name_len < target_len) return false;
+    for (size_t i = 0; i < target_len; i++) {
         if (tolower((unsigned char)name[i]) != tolower((unsigned char)target[i]))
             return false;
     }
-    return true;
+    return true; /* Prefix match, allow trailing chars */
 }
 
 static void copy_name(char *dst, size_t dst_len, const uint8_t *name, uint8_t name_len)
@@ -461,7 +462,7 @@ static esp_err_t begin_scan(sensor_kind_t kind)
     struct ble_gap_disc_params dp = {
         /* Leave most radio time to the Wi-Fi AP while still checking for the
          * watch regularly. BLE interval units are 0.625 ms. */
-        .itvl = 160,  /* 100 ms */
+        .itvl = 320,  /* 200 ms (was 100ms) - less aggressive for WiFi coexistence */
         .window = 48, /* 30 ms */
         .filter_policy = 0,
         .limited = 0,
@@ -478,7 +479,7 @@ static esp_err_t begin_scan(sensor_kind_t kind)
         arm_hr_if_needed();
         return ESP_FAIL;
     }
-    ESP_LOGI(TAG, "scanning kind=%d", (int)kind);
+    ESP_LOGI(TAG, "scanning kind=%d (itvl=200ms, window=30ms, dur=%dms)", (int)kind, SCAN_MS);
     return ESP_OK;
 }
 
@@ -570,9 +571,20 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         }
         if (event->disc.event_type == BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP) {
             bool identified = classify(&fields) != SENSOR_KIND_COUNT;
+            if (identified) {
+                char name_buf[32] = {0};
+                copy_name(name_buf, sizeof(name_buf), fields.name, fields.name_len);
+                ESP_LOGD(TAG, "SCAN_RSP: %s kind=%d rssi=%d", name_buf, classify(&fields), event->disc.rssi);
+            }
             upsert_result(&event->disc, &fields, identified);
         } else if (event->disc.event_type == BLE_HCI_ADV_RPT_EVTYPE_ADV_IND ||
                    event->disc.event_type == BLE_HCI_ADV_RPT_EVTYPE_SCAN_IND) {
+            bool identified = classify(&fields) != SENSOR_KIND_COUNT;
+            if (identified) {
+                char name_buf[32] = {0};
+                copy_name(name_buf, sizeof(name_buf), fields.name, fields.name_len);
+                ESP_LOGI(TAG, "ADV: %s kind=%d rssi=%d", name_buf, classify(&fields), event->disc.rssi);
+            }
             upsert_result(&event->disc, &fields, true);
         }
         return 0;
@@ -970,6 +982,30 @@ esp_err_t sensor_hub_forget(sensor_kind_t kind)
     }
     if (!s_mux || !s_available) return ESP_ERR_INVALID_STATE;
     release_link(kind, true);
+    return ESP_OK;
+}
+
+esp_err_t sensor_hub_pause_hr(void)
+{
+    if (!s_mux || !s_available) return ESP_ERR_INVALID_STATE;
+    xSemaphoreTake(s_mux, portMAX_DELAY);
+    sensor_slot_t *slot = &s_slots[SENSOR_KIND_HR];
+    slot->paused = true;
+    xSemaphoreGive(s_mux);
+    /* Terminate any active connection */
+    release_link(SENSOR_KIND_HR, false);
+    return ESP_OK;
+}
+
+esp_err_t sensor_hub_resume_hr(void)
+{
+    if (!s_mux || !s_available) return ESP_ERR_INVALID_STATE;
+    xSemaphoreTake(s_mux, portMAX_DELAY);
+    sensor_slot_t *slot = &s_slots[SENSOR_KIND_HR];
+    slot->paused = false;
+    slot->backoff_ms = HR_BACKOFF_BOOT_MS;
+    xSemaphoreGive(s_mux);
+    arm_hr_if_needed();
     return ESP_OK;
 }
 

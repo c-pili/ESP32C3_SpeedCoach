@@ -196,8 +196,10 @@ static void sharp_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_t
                     ESP_LOGE(TAG, "line %ld write failed: %s", (long)y, esp_err_to_name(err));
                     break;
                 }
-                /* Yield after EVERY line to feed the task watchdog */
-                vTaskDelay(0);
+                /* Yield every 16 lines to feed the task watchdog and allow WiFi processing */
+                if ((y & 0xF) == 0) {
+                    vTaskDelay(pdMS_TO_TICKS(1));
+                }
             }
             xSemaphoreGive(s_bus_lock);
         }
