@@ -15,10 +15,14 @@
 #include "storage_paths.h"
 #include "sensor_hub.h"
 
+#include "lwip/sockets.h"
+
 #define AP_SSID "SpeedCoach_Wi-Fi"
 #define AP_PASSWORD "SpeedCoach"
 static const char *TAG = "wifi_export";
 static httpd_handle_t s_server = NULL;
+static TaskHandle_t s_dns_task = NULL;
+static int s_dns_sock = -1;
 static bool s_wifi_initialized = false;
 static bool s_netif_initialized = false;
 static wifi_config_callback_t s_config_cb = NULL;
@@ -27,6 +31,87 @@ static wifi_activity_callback_t s_activity_cb = NULL;
 static wifi_battery_callback_t s_battery_cb = NULL;
 static wifi_sensor_start_callback_t s_sensor_start_cb = NULL;
 static bool s_sensor_start_attempted = false;
+
+static void dns_server_task(void *pvParameters)
+{
+    (void)pvParameters;
+    uint8_t rx_buffer[128];
+    uint8_t tx_buffer[160];
+    struct sockaddr_in client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
+
+    s_dns_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (s_dns_sock < 0) {
+        ESP_LOGE(TAG, "DNS socket creation failed: errno %d", errno);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    struct sockaddr_in server_addr = {
+        .sin_family = AF_INET,
+        .sin_port = htons(53),
+        .sin_addr.s_addr = htonl(INADDR_ANY),
+    };
+
+    if (bind(s_dns_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        ESP_LOGE(TAG, "DNS socket bind failed: errno %d", errno);
+        close(s_dns_sock);
+        s_dns_sock = -1;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Captive DNS server started on port 53");
+
+    while (1) {
+        int len = recvfrom(s_dns_sock, rx_buffer, sizeof(rx_buffer), 0,
+                           (struct sockaddr *)&client_addr, &client_addr_len);
+        if (len < 12) continue;
+
+        uint16_t flags = (rx_buffer[2] << 8) | rx_buffer[3];
+        if ((flags & 0x7800) != 0) continue;
+
+        memcpy(tx_buffer, rx_buffer, len);
+        tx_buffer[2] = 0x81;
+        tx_buffer[3] = 0x80;
+        tx_buffer[6] = 0x00;
+        tx_buffer[7] = 0x01;
+        tx_buffer[8] = 0x00;
+        tx_buffer[9] = 0x00;
+        tx_buffer[10] = 0x00;
+        tx_buffer[11] = 0x00;
+
+        int resp_len = len;
+        tx_buffer[resp_len++] = 0xc0;
+        tx_buffer[resp_len++] = 0x0c;
+        tx_buffer[resp_len++] = 0x00;
+        tx_buffer[resp_len++] = 0x01;
+        tx_buffer[resp_len++] = 0x00;
+        tx_buffer[resp_len++] = 0x01;
+        tx_buffer[resp_len++] = 0x00;
+        tx_buffer[resp_len++] = 0x00;
+        tx_buffer[resp_len++] = 0x00;
+        tx_buffer[resp_len++] = 0x3c;
+        tx_buffer[resp_len++] = 0x00;
+        tx_buffer[resp_len++] = 0x04;
+        tx_buffer[resp_len++] = 192;
+        tx_buffer[resp_len++] = 168;
+        tx_buffer[resp_len++] = 4;
+        tx_buffer[resp_len++] = 1;
+
+        sendto(s_dns_sock, tx_buffer, resp_len, 0,
+               (struct sockaddr *)&client_addr, client_addr_len);
+    }
+}
+
+static esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
+{
+    (void)err;
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+    httpd_resp_send(req, "Redirecting to SpeedCoach", HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
 
 void wifi_export_set_callbacks(wifi_config_callback_t config_cb,
                                wifi_activity_ready_callback_t ready_cb,
@@ -282,12 +367,26 @@ esp_err_t wifi_export_start(void)
     httpd_register_uri_handler(s_server, &sensors);
     httpd_register_uri_handler(s_server, &config_uri);
     httpd_register_uri_handler(s_server, &start);
+    httpd_register_err_handler(s_server, HTTPD_404_NOT_FOUND, http_404_error_handler);
+
+    if (!s_dns_task) {
+        xTaskCreate(dns_server_task, "dns_server", 2560, NULL, 5, &s_dns_task);
+    }
+
     ESP_LOGI(TAG, "AP started: %s (password: %s), http://192.168.4.1", AP_SSID, AP_PASSWORD);
     return ESP_OK;
 }
 
 esp_err_t wifi_export_stop(void)
 {
+    if (s_dns_sock >= 0) {
+        close(s_dns_sock);
+        s_dns_sock = -1;
+    }
+    if (s_dns_task) {
+        vTaskDelete(s_dns_task);
+        s_dns_task = NULL;
+    }
     if (s_server) { httpd_stop(s_server); s_server = NULL; }
     return s_wifi_initialized ? esp_wifi_stop() : ESP_OK;
 }
