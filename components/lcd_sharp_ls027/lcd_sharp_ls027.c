@@ -27,7 +27,7 @@ static bool s_initialized = false;
 static uint8_t s_framebuffer[LCD_V_RES][LCD_BYTES_PER_LINE];
 _Alignas(4) static uint8_t s_draw_buf1[LCD_H_RES * LCD_DRAW_LINES * 2];
 _Alignas(4) static uint8_t s_draw_buf2[LCD_H_RES * LCD_DRAW_LINES * 2];
-static uint8_t s_line_tx[1 + 1 + LCD_BYTES_PER_LINE + 2];
+static uint8_t s_line_tx[1 + 1 + LCD_BYTES_PER_LINE + 1];
 
 static esp_err_t sharp_send(const uint8_t *data, size_t len)
 {
@@ -38,8 +38,8 @@ static esp_err_t sharp_send(const uint8_t *data, size_t len)
     gpio_set_level(CONFIG_LCD_SHARP_PIN_SCS, 1);
     esp_rom_delay_us(6); /* Sharp tsSCS >= 6 us setup time before the first SCLK edge. */
     esp_err_t err = spi_device_polling_transmit(s_spi, &trans);
-    if (len == 3) {
-        /* Hold mode-only and clear commands for a conservative 220 us pulse. */
+    /* Hold clear command for a conservative 220 us pulse per datasheet. */
+    if (len == 2 && (data[0] & SHARP_CMD_CLEAR)) {
         esp_rom_delay_us(220);
     }
     esp_rom_delay_us(4); /* Meet thSCS >= 2 us hold time and 220 us data-update minimum. */
@@ -60,7 +60,7 @@ static uint8_t sharp_command(uint8_t command)
 
 static esp_err_t sharp_clear(void)
 {
-    uint8_t tx[3] = {sharp_command(SHARP_CMD_CLEAR), 0, 0};
+    uint8_t tx[2] = {sharp_command(SHARP_CMD_CLEAR), 0};
     return sharp_send(tx, sizeof(tx));
 }
 
@@ -70,7 +70,6 @@ static esp_err_t sharp_write_line(uint16_t y)
     s_line_tx[1] = (uint8_t)(y + 1); /* Sharp line addresses are 1-based. */
     memcpy(&s_line_tx[2], s_framebuffer[y], LCD_BYTES_PER_LINE);
     s_line_tx[2 + LCD_BYTES_PER_LINE] = 0;
-    s_line_tx[3 + LCD_BYTES_PER_LINE] = 0;
     return sharp_send(s_line_tx, sizeof(s_line_tx));
 }
 
@@ -83,7 +82,7 @@ static void vcom_task(void *arg)
         if (xSemaphoreTake(s_bus_lock, pdMS_TO_TICKS(100)) == pdTRUE) {
             s_vcom = !s_vcom;
             /* Display-mode NOP carries the new VCOM phase; >13 clocks required. */
-            uint8_t tx[3] = {sharp_command(0), 0, 0};
+            uint8_t tx[2] = {sharp_command(0), 0};
             esp_err_t err = sharp_send(tx, sizeof(tx));
             xSemaphoreGive(s_bus_lock);
             if (err != ESP_OK) {
