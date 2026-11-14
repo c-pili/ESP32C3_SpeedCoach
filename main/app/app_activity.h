@@ -6,6 +6,8 @@
 typedef enum
 {
     ACT_CMD_START = 0,
+    ACT_CMD_PAUSE,
+    ACT_CMD_RESUME,
     ACT_CMD_STOP_SAVE,
 } act_cmd_t;
 

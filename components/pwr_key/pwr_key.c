@@ -2,7 +2,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
-#include <limits.h>
 
 static pwr_key_config_t s_cfg = {0};
 static pwr_key_cb_t s_cb = NULL;
@@ -36,9 +35,11 @@ static void pwr_key_task(void *arg)
     int64_t last_change_ms = 0;
 
     bool pressed = false;
+    bool long_fired = false;
     int64_t press_start_ms = -1;
 
-    bool shutdown_fired = false;
+    bool pending_single = false;
+    int64_t release_ms = 0;
 
     while (1) {
         int64_t now_ms = esp_timer_get_time() / 1000;
@@ -53,32 +54,46 @@ static void pwr_key_task(void *arg)
             debounced = raw;
         }
 
-        // press edge
+        /* Press edge */
         if (debounced && !pressed) {
             pressed = true;
             press_start_ms = now_ms;
-            shutdown_fired = false;
-        }
+            long_fired = false;
 
-        // A held press powers the device off without requiring a touchscreen.
-        if (pressed && press_start_ms >= 0 && !shutdown_fired) {
-            int64_t held = now_ms - press_start_ms;
-            if ((uint32_t)held >= s_cfg.shutdown_hold_ms) {
-                shutdown_fired = true;
-                if (s_cb) s_cb(PWR_KEY_EVT_SHUTDOWN, s_user);
+            if (pending_single) {
+                /* Second press within window -> double press */
+                pending_single = false;
+                if (s_cb) s_cb(PWR_KEY_EVT_DOUBLE_PRESS, s_user);
+                /* Consume this press; don't treat release as another event */
+                press_start_ms = -1;
             }
         }
 
-        // release edge
+        /* Long press while held */
+        if (pressed && press_start_ms >= 0 && !long_fired) {
+            int64_t held = now_ms - press_start_ms;
+            if ((uint32_t)held >= s_cfg.long_press_ms) {
+                long_fired = true;
+                pending_single = false;
+                if (s_cb) s_cb(PWR_KEY_EVT_LONG_PRESS, s_user);
+            }
+        }
+
+        /* Release edge */
         if (!debounced && pressed) {
             pressed = false;
-            // Every release before the shutdown hold threshold toggles the
-            // activity. There is no separate display-sleep action on a
-            // button-only device.
-            if (!shutdown_fired && s_cb)
-                s_cb(PWR_KEY_EVT_ACTIVITY_TOGGLE, s_user);
-
+            if (press_start_ms >= 0 && !long_fired) {
+                /* Wait to distinguish single vs double press */
+                pending_single = true;
+                release_ms = now_ms;
+            }
             press_start_ms = -1;
+        }
+
+        /* Single press timeout */
+        if (pending_single && (now_ms - release_ms) >= (int64_t)s_cfg.double_press_ms) {
+            pending_single = false;
+            if (s_cb) s_cb(PWR_KEY_EVT_SHORT_PRESS, s_user);
         }
 
         vTaskDelay(pdMS_TO_TICKS(s_cfg.poll_ms));
@@ -95,9 +110,9 @@ esp_err_t pwr_key_init(const pwr_key_config_t *cfg, pwr_key_cb_t cb, void *user)
 
     if (s_cfg.debounce_ms == 0) s_cfg.debounce_ms = 30;
     if (s_cfg.poll_ms == 0) s_cfg.poll_ms = 20;
-    if (s_cfg.shutdown_hold_ms == 0) s_cfg.shutdown_hold_ms = 5000;
+    if (s_cfg.long_press_ms == 0) s_cfg.long_press_ms = 3000;
+    if (s_cfg.double_press_ms == 0) s_cfg.double_press_ms = 350;
 
-    // KEY input
     gpio_config_t in = {
         .pin_bit_mask = 1ULL << s_cfg.key_gpio,
         .mode = GPIO_MODE_INPUT,
@@ -107,7 +122,6 @@ esp_err_t pwr_key_init(const pwr_key_config_t *cfg, pwr_key_cb_t cb, void *user)
     };
     ESP_ERROR_CHECK(gpio_config(&in));
 
-    // HOLD output
     gpio_config_t out = {
         .pin_bit_mask = 1ULL << s_cfg.hold_gpio,
         .mode = GPIO_MODE_OUTPUT,
@@ -116,9 +130,6 @@ esp_err_t pwr_key_init(const pwr_key_config_t *cfg, pwr_key_cb_t cb, void *user)
         .intr_type = GPIO_INTR_DISABLE
     };
     ESP_ERROR_CHECK(gpio_config(&out));
-
-    // You can set this true immediately if you want the device to stay on.
-    // pwr_key_set_hold(true);
 
     xTaskCreate(pwr_key_task, "pwr_key", 4096, NULL, 10, NULL);
     return ESP_OK;

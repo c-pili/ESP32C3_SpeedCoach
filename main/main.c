@@ -69,7 +69,11 @@ static esp_err_t web_activity_ready(void)
 static esp_err_t web_start_sensor_hub(void)
 {
     if (sensor_hub_available()) return ESP_OK;
-    ESP_LOGI(TAG, "web_start_sensor_hub: sensor hub already initialized, returning OK");
+    esp_err_t err = sensor_hub_init();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "BLE sensor hub init failed: %s", esp_err_to_name(err));
+        return err;
+    }
     return ESP_OK;
 }
 
@@ -108,16 +112,6 @@ void app_main(void)
         ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
     } else {
         ESP_LOGI(TAG, "Wi-Fi AP started successfully");
-    }
-
-    /* Initialize BLE sensor hub (HR + RowPod) so it can connect while WiFi is up.
-     * This must happen before activity starts, otherwise HR won't be available. */
-    ESP_LOGI(TAG, "Initializing BLE sensor hub...");
-    esp_err_t ble_err = sensor_hub_init();
-    if (ble_err != ESP_OK) {
-        ESP_LOGW(TAG, "BLE sensor hub init failed: %s", esp_err_to_name(ble_err));
-    } else {
-        ESP_LOGI(TAG, "BLE sensor hub ready");
     }
 
     const bool imu_ready = init_imu();

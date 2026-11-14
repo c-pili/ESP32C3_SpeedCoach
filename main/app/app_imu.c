@@ -361,11 +361,11 @@ void stroke_task(void *arg)
         if (s_activity_mutex)
             xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
 
-        if (s_activity_recording)
+        if (s_activity_recording && !s_activity_paused)
         {
             s_session_time_s = (s_session_last_us > 0)
-                ? (float)(esp_timer_get_time() - s_session_last_us) * 1e-6f
-                : 0.0f;
+                ? (float)(s_session_accumulated_us + (esp_timer_get_time() - s_session_last_us)) * 1e-6f
+                : (float)s_session_accumulated_us * 1e-6f;
             s_activity.duration_ms = (uint32_t)(s_session_time_s * 1000.0f);
 
             uint32_t stroke_delta = (ev == STROKE_EVENT_CATCH) ? 1 : 0;
@@ -484,6 +484,13 @@ void stroke_task(void *arg)
             if (recording && stroke_len_m > 0.01f)
                 stroke_len_disp = stroke_len_m;
 
+            float session_time_ui = s_session_time_s;
+            if (s_activity_paused) {
+                session_time_ui = (float)s_session_accumulated_us * 1e-6f;
+            } else if (s_session_last_us > 0) {
+                session_time_ui = (float)(s_session_accumulated_us + (esp_timer_get_time() - s_session_last_us)) * 1e-6f;
+            }
+
             coach_ui_snapshot_t snap = {
                 .seq = ++s_ui_seq,
                 .recording = recording,
@@ -492,7 +499,7 @@ void stroke_task(void *arg)
                 .gps_stale = gps_connected && !gps_ok,
                 .gps_bars = gps_bars,
                 .battery_pct = 255,
-                .time_s = recording ? s_session_time_s : 0.0f,
+                .time_s = recording ? session_time_ui : 0.0f,
                 .distance_m = recording ? s_activity.distance_m : 0.0f,
                 .pace_s_per_500m = pace,
                 .avg_pace_s_per_500m = avg_pace_s,

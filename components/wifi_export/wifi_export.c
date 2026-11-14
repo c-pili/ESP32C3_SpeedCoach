@@ -324,8 +324,6 @@ esp_err_t wifi_export_start(void)
 {
     if (s_server) return ESP_OK;
     ESP_LOGI(TAG, "Starting Wi-Fi export (netif_init=%d, wifi_init=%d)...", s_netif_initialized, s_wifi_initialized);
-    /* Pause HR sensor to save CPU/RAM for WiFi operation */
-    (void)sensor_hub_pause_hr();
     if (!s_netif_initialized) {
         esp_err_t net_err = esp_netif_init();
         if (net_err != ESP_OK && net_err != ESP_ERR_INVALID_STATE) return net_err;
@@ -408,7 +406,5 @@ esp_err_t wifi_export_stop(void)
         s_dns_task = NULL;
     }
     if (s_server) { httpd_stop(s_server); s_server = NULL; }
-    /* Resume HR sensor now that WiFi is stopped */
-    (void)sensor_hub_resume_hr();
     return s_wifi_initialized ? esp_wifi_stop() : ESP_OK;
 }

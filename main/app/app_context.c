@@ -4,11 +4,13 @@ activity_storage_t s_storage = {.mounted = false, .mount_point = NULL};
 QueueHandle_t s_act_q = NULL;
 TaskHandle_t s_act_worker_task = NULL;
 volatile bool s_activity_recording = false;
+volatile bool s_activity_paused = false;
 activity_t s_activity = {0};
 uint32_t s_activity_next_id = 1;
 
 float s_session_time_s = 0.0f;
 int64_t s_session_last_us = 0;
+int64_t s_session_accumulated_us = 0;
 
 uint32_t s_last_session_stroke_count = 0;
 SemaphoreHandle_t s_activity_mutex = NULL;

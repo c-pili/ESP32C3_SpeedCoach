@@ -19,10 +19,12 @@ extern activity_storage_t s_storage;
 extern QueueHandle_t s_act_q;
 extern TaskHandle_t s_act_worker_task;
 extern volatile bool s_activity_recording;
+extern volatile bool s_activity_paused;
 extern activity_t s_activity;
 extern uint32_t s_activity_next_id;
 extern float s_session_time_s;
 extern int64_t s_session_last_us;
+extern int64_t s_session_accumulated_us;
 extern uint32_t s_last_session_stroke_count;
 extern SemaphoreHandle_t s_activity_mutex;
 

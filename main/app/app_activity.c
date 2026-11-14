@@ -10,8 +10,12 @@
 #include "esp_timer.h"
 #include "nvs_helper.h"
 #include "gps_neo_m8n.h"
+#include "sensor_hub.h"
 #include "ui.h"
 #include "ui_data_page.h"
+#include "ui_activity_summary_page.h"
+#include "ui_activity_detail_page.h"
+#include "esp_lvgl_port.h"
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
@@ -29,7 +33,9 @@ static bool start_activity_log(uint32_t id)
     if (s_activity_mutex)
         xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
     s_activity_recording = false;
+    s_activity_paused = false;
     s_session_last_us = 0;
+    s_session_accumulated_us = 0;
     activity_stop(&s_activity, time(NULL));
     if (s_activity_mutex)
         xSemaphoreGive(s_activity_mutex);
@@ -60,11 +66,26 @@ void activity_worker_task(void *arg)
             continue;
         }
 
-        if (cmd == ACT_CMD_START)
+        if (cmd == ACT_CMD_START && !s_activity_recording)
         {
+            if (s_activity_mutex)
+                xSemaphoreGive(s_activity_mutex);
             (void)wifi_export_stop();
+            /* Start BLE for HR during activity */
+            if (!sensor_hub_available()) {
+                esp_err_t ble_err = sensor_hub_init();
+                if (ble_err != ESP_OK)
+                    ESP_LOGW("ACT", "BLE init failed at activity start: %s", esp_err_to_name(ble_err));
+            } else {
+                (void)sensor_hub_resume_hr();
+            }
+
+            if (s_activity_mutex)
+                xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
             s_activity_recording = true;
+            s_activity_paused = false;
             s_session_time_s = 0.0f;
+            s_session_accumulated_us = 0;
             s_session_last_us = esp_timer_get_time();
             app_imu_request_session_reset();
 
@@ -85,20 +106,49 @@ void activity_worker_task(void *arg)
             continue;
         }
 
-        if (cmd == ACT_CMD_STOP_SAVE)
+        if (cmd == ACT_CMD_PAUSE && s_activity_recording && !s_activity_paused)
         {
+            int64_t now_us = esp_timer_get_time();
             if (s_session_last_us > 0) {
-                int64_t elapsed_us = esp_timer_get_time() - s_session_last_us;
-                if (elapsed_us < 0)
-                    elapsed_us = 0;
-                uint32_t dur_ms = (uint32_t)(elapsed_us / 1000);
-                if (dur_ms > s_activity.duration_ms)
-                    s_activity.duration_ms = dur_ms;
+                s_session_accumulated_us += (now_us - s_session_last_us);
             }
+            s_session_last_us = 0;
+            s_activity_paused = true;
+            if (s_activity_mutex)
+                xSemaphoreGive(s_activity_mutex);
+            ESP_LOGI("ACT", "PAUSE");
+            continue;
+        }
+
+        if (cmd == ACT_CMD_RESUME && s_activity_recording && s_activity_paused)
+        {
+            s_session_last_us = esp_timer_get_time();
+            s_activity_paused = false;
+            if (s_activity_mutex)
+                xSemaphoreGive(s_activity_mutex);
+            ESP_LOGI("ACT", "RESUME");
+            continue;
+        }
+
+        if (cmd == ACT_CMD_STOP_SAVE && s_activity_recording)
+        {
+            /* If paused, accumulated time is already up to date */
+            if (!s_activity_paused && s_session_last_us > 0) {
+                int64_t elapsed_us = esp_timer_get_time() - s_session_last_us;
+                if (elapsed_us < 0) elapsed_us = 0;
+                s_session_accumulated_us += elapsed_us;
+            }
+            s_session_last_us = 0;
+            s_activity_paused = false;
+            uint32_t dur_ms = (uint32_t)(s_session_accumulated_us / 1000);
+            if (dur_ms > s_activity.duration_ms)
+                s_activity.duration_ms = dur_ms;
 
             activity_stop(&s_activity, time(NULL));
 
             activity_t snapshot = s_activity;
+            uint32_t snapshot_id = snapshot.id;
+            char snapshot_base[128] = {0};
             if (s_activity_mutex)
                 xSemaphoreGive(s_activity_mutex);
 
@@ -110,6 +160,7 @@ void activity_worker_task(void *arg)
             float final_time_s = snapshot.duration_ms / 1000.0f;
             if (s_act_log.opened)
             {
+                snprintf(snapshot_base, sizeof(snapshot_base), "%s", s_act_log.filename_base);
                 /* Drain IMU log messages so last GPS/stroke distance is in the file
                  * before we write the remainder split. */
                 activity_log_msg_t pending;
@@ -153,8 +204,6 @@ void activity_worker_task(void *arg)
                 activity_log_finalize(&s_act_log, dist_m, final_time_s, snapshot.avg_spm);
             }
 
-            // STOP THE LOGGER: This flushes and closes the CSV file.
-            // The file is now complete and saved to flash storage.
             activity_log_stop(&s_act_log);
 
             FILE *f = fopen(ACTIVITY_INDEX_PATH, "a");
@@ -164,7 +213,7 @@ void activity_worker_task(void *arg)
                 float avg_pace_s_per500 = 0.0f;
                 if (snapshot.avg_speed_mps > 0.01f)
                 {
-                    avg_pace_s_per500 = 500.0f / snapshot.avg_speed_mps; // seconds per 500m
+                    avg_pace_s_per500 = 500.0f / snapshot.avg_speed_mps;
                 }
 
                 fprintf(f, "%lu,%ld,%lu,%.2f,%.2f,%s\n",
@@ -178,12 +227,30 @@ void activity_worker_task(void *arg)
                 fclose(f);
             }
 
-            // Publish the stopped state only after the activity data and
-            // index have been flushed, so a power-off request can wait safely.
             s_activity_recording = false;
+            s_session_accumulated_us = 0;
+
+            /* Pause BLE and restart WiFi after activity */
+            (void)sensor_hub_pause_hr();
             esp_err_t ap_err = wifi_export_start();
             if (ap_err != ESP_OK) ESP_LOGE("ACT", "Wi-Fi export AP restart failed: %s", esp_err_to_name(ap_err));
+
+            /* Show summary for the saved activity */
+            if (s_disp && snapshot_base[0] != '\0') {
+                char rel_path[160];
+                snprintf(rel_path, sizeof(rel_path), "%s/%s_tcx.tcx", snapshot_base, snapshot_base);
+                if (lvgl_port_lock(0)) {
+                    activity_summary_page_refresh();
+                    activity_detail_page_open(snapshot_id, rel_path);
+                    ui_defer_go_to_page(UI_ACTIVITY_DETAIL_PAGE);
+                    lvgl_port_unlock();
+                }
+            }
+            continue;
         }
+
+        if (s_activity_mutex)
+            xSemaphoreGive(s_activity_mutex);
     }
 }
 
@@ -206,10 +273,15 @@ void app_activity_monitor_targets(void)
         return;
     }
 
+    if (s_activity_paused) {
+        return;
+    }
+
     bool reached = false;
     if (s_activity_mutex) xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
     s_session_time_s = s_session_last_us > 0
-        ? (float)(now_us - s_session_last_us) * 1e-6f : 0.0f;
+        ? (float)(s_session_accumulated_us + (now_us - s_session_last_us)) * 1e-6f
+        : (float)s_session_accumulated_us * 1e-6f;
     s_activity.duration_ms = (uint32_t)(s_session_time_s * 1000.0f);
     if (s_workout_config.mode == WIFI_WORKOUT_TIME)
         reached = s_session_time_s >= (float)s_workout_config.duration_s;
@@ -234,7 +306,6 @@ void activity_logger_task(void *arg)
     {
         if (xQueueReceive(s_log_q, &msg, portMAX_DELAY) == pdTRUE)
         {
-            // Only append if file is open
             if (s_act_log.opened)
             {
                 activity_log_append(&s_act_log, &msg.row);

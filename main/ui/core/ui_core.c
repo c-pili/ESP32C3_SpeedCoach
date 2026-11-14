@@ -51,11 +51,19 @@ static void snapshot_idle(coach_ui_snapshot_t *snap)
 
 static void overlay_session_time(coach_ui_snapshot_t *snap)
 {
-    if (!s_activity_recording || s_session_last_us <= 0) {
+    if (!s_activity_recording) {
         return;
     }
     snap->recording = true;
-    snap->time_s = (float)(esp_timer_get_time() - s_session_last_us) * 1e-6f;
+    if (s_activity_paused) {
+        snap->time_s = (float)s_session_accumulated_us * 1e-6f;
+        return;
+    }
+    if (s_session_last_us > 0) {
+        snap->time_s = (float)(s_session_accumulated_us + (esp_timer_get_time() - s_session_last_us)) * 1e-6f;
+    } else {
+        snap->time_s = (float)s_session_accumulated_us * 1e-6f;
+    }
 }
 
 static void coach_ui_tick(lv_timer_t *t)
