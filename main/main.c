@@ -186,7 +186,7 @@ void app_main(void)
     BaseType_t logger_ok = xTaskCreate(activity_logger_task, "activity_logger",
                                        3072, NULL, 6, NULL);
     BaseType_t worker_ok = xTaskCreate(activity_worker_task, "activity_worker",
-                                       3072, NULL, 9, &s_act_worker_task);
+                                       6144, NULL, 9, &s_act_worker_task);
     if (logger_ok != pdPASS || worker_ok != pdPASS) {
         ESP_LOGE(TAG, "Activity task creation failed (logger=%d worker=%d)",
                  (int)logger_ok, (int)worker_ok);
@@ -195,7 +195,7 @@ void app_main(void)
     /* Always start stroke_task so live UI snapshots (GPS, time, HR, and IMU
      * strokes/acceleration) are published continuously. */
     BaseType_t stroke_ok = xTaskCreatePinnedToCore(stroke_task, "stroke",
-                                                   4608, NULL, 3, NULL, 0);
+                                                   6144, NULL, 3, NULL, 0);
     if (stroke_ok != pdPASS) {
         ESP_LOGE(TAG, "stroke task create FAILED, free internal=%u largest=%u",
                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),

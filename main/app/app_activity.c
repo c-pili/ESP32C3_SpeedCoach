@@ -71,6 +71,8 @@ void activity_worker_task(void *arg)
             if (s_activity_mutex)
                 xSemaphoreGive(s_activity_mutex);
             (void)wifi_export_stop();
+            /* Allow Wi-Fi stack to fully release memory before BLE init */
+            vTaskDelay(pdMS_TO_TICKS(200));
             /* Start BLE for HR during activity */
             if (!sensor_hub_available()) {
                 esp_err_t ble_err = sensor_hub_init();
