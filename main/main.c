@@ -82,6 +82,7 @@ void app_main(void)
 {
     /* The ESP-IDF Wi-Fi driver stores calibration/configuration in NVS. */
     ESP_ERROR_CHECK(nvs_helper_init());
+    ESP_LOGI(TAG, "NVS init done");
 
     /* Activity queues and callbacks are initialized before starting the Wi-Fi AP
      * and UI so web requests and button presses are safe immediately. */
@@ -99,14 +100,20 @@ void app_main(void)
     ESP_ERROR_CHECK(s_act_q ? ESP_OK : ESP_ERR_NO_MEM);
     s_log_q = xQueueCreate(LOG_QUEUE_LEN, sizeof(activity_log_msg_t));
     ESP_ERROR_CHECK(s_log_q ? ESP_OK : ESP_ERR_NO_MEM);
+    ESP_LOGI(TAG, "Activity queues created");
 
     wifi_export_set_callbacks(web_configure_workout, web_activity_ready, web_start_activity,
                               ui_status_bar_read_battery_percent, web_start_sensor_hub);
 
     /* Bring up the AP before touching optional peripherals. This keeps the
      * configuration page reachable even when an IMU, GPS, RTC or LCD is absent. */
+    ESP_LOGI(TAG, "Starting Wi-Fi AP...");
     esp_err_t ap_err = wifi_export_start();
-    if (ap_err != ESP_OK) ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
+    if (ap_err != ESP_OK) {
+        ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
+    } else {
+        ESP_LOGI(TAG, "Wi-Fi AP started successfully");
+    }
 
     const bool imu_ready = init_imu();
     if (!imu_ready)
@@ -118,6 +125,9 @@ void app_main(void)
 
     /* Initialize the Sharp LS027 display and LVGL regardless of IMU status so
      * the screen always works on the breadboard. */
+    ESP_LOGI(TAG, "Initializing display (free internal RAM: %u, largest block: %u)...",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     esp_err_t display_err = ESP_ERR_NOT_SUPPORTED;
     if (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) >= 20000)
     {
@@ -130,8 +140,14 @@ void app_main(void)
     }
     const bool ui_ready = (display_err == ESP_OK);
     s_ui_ready = ui_ready;
+    if (ui_ready) {
+        ESP_LOGI(TAG, "Display initialized successfully");
+    } else {
+        ESP_LOGW(TAG, "Display initialization failed: %s", esp_err_to_name(display_err));
+    }
 
     if (ui_ready) {
+        ESP_LOGI(TAG, "Initializing UI...");
         ui_init(s_disp);
 
         const data_metric_t metrics[] = {
@@ -151,6 +167,7 @@ void app_main(void)
         ui_register_dark_mode_cb(on_dark_mode_setting_changed);
         ui_register_auto_rotate_cb(on_auto_rotate_setting_changed);
         app_pwr_key_setup();
+        ESP_LOGI(TAG, "UI initialized successfully");
     }
 
     gps_neo_m8n_config_t gps_cfg = {

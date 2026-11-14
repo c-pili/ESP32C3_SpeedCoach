@@ -346,11 +346,18 @@ static void gps_task(void *arg)
     char line[160];
     int line_len = 0;
 
+    ESP_LOGI(TAG, "GPS task started, reading from UART%d", s_uart);
     while (1)
     {
         int n = uart_read_bytes(s_uart, rx, sizeof(rx), pdMS_TO_TICKS(200));
         if (n <= 0)
             continue;
+
+        static int s_rx_count = 0;
+        s_rx_count += n;
+        if ((s_rx_count % 500) == 0) {
+            ESP_LOGI(TAG, "GPS: received %d bytes total", s_rx_count);
+        }
 
         for (int i = 0; i < n; i++)
         {
@@ -410,6 +417,7 @@ esp_err_t gps_neo_m8n_init(const gps_neo_m8n_config_t *cfg)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
     };
+    ESP_LOGI(TAG, "GPS init: UART%d TX=%d RX=%d baud=%d", cfg->uart_num, cfg->tx_gpio, cfg->rx_gpio, cfg->baud);
     esp_err_t err = uart_param_config(s_uart, &uc);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "UART config unavailable: %s", esp_err_to_name(err));
@@ -429,7 +437,7 @@ esp_err_t gps_neo_m8n_init(const gps_neo_m8n_config_t *cfg)
     }
 
     xTaskCreate(gps_task, "gps_neo_m8n", cfg->task_stack, NULL, cfg->task_prio, NULL);
-    ESP_LOGI(TAG, "GPS init uart=%d tx=%d rx=%d baud=%d", cfg->uart_num, cfg->tx_gpio, cfg->rx_gpio, cfg->baud);
+    ESP_LOGI(TAG, "GPS init done, task created");
 
     return ESP_OK;
 }

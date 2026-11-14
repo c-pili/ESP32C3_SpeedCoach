@@ -126,8 +126,19 @@ void wifi_export_set_callbacks(wifi_config_callback_t config_cb,
     s_sensor_start_cb = sensor_start_cb;
 }
 
+static void on_ip_event(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    (void)arg;
+    (void)base;
+    if (id == IP_EVENT_AP_STAIPASSIGNED) {
+        ip_event_ap_staipassigned_t *event = (ip_event_ap_staipassigned_t *)data;
+        ESP_LOGI(TAG, "DHCP: Assigned IP " IPSTR " to client", IP2STR(&event->ip));
+    }
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
+    ESP_LOGI(TAG, "HTTP: Client connected to http://192.168.4.1/");
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_sendstr_chunk(req, "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>SpeedCoach</title><h1>SpeedCoach</h1><p>Batterie : <span id=b>lecture...</span></p>");
     if (!s_config_cb || !s_activity_ready_cb || !s_activity_cb) {
@@ -312,10 +323,12 @@ static esp_err_t download_handler(httpd_req_t *req)
 esp_err_t wifi_export_start(void)
 {
     if (s_server) return ESP_OK;
+    ESP_LOGI(TAG, "Starting Wi-Fi export (netif_init=%d, wifi_init=%d)...", s_netif_initialized, s_wifi_initialized);
     if (!s_netif_initialized) {
         esp_err_t net_err = esp_netif_init();
         if (net_err != ESP_OK && net_err != ESP_ERR_INVALID_STATE) return net_err;
         s_netif_initialized = true;
+        ESP_LOGI(TAG, "esp_netif_init done");
     }
     esp_err_t err = esp_event_loop_create_default();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
@@ -326,6 +339,7 @@ esp_err_t wifi_export_start(void)
         if (err != ESP_OK) return err;
         (void)esp_wifi_set_storage(WIFI_STORAGE_RAM);
         s_wifi_initialized = true;
+        ESP_LOGI(TAG, "esp_wifi_init done");
     }
     wifi_config_t config = {0};
     memcpy(config.ap.ssid, AP_SSID, sizeof(AP_SSID) - 1);
@@ -346,8 +360,11 @@ esp_err_t wifi_export_start(void)
     if (err == ESP_OK) err = esp_wifi_start();
     if (err != ESP_OK) return err;
     (void)esp_wifi_set_ps(WIFI_PS_NONE);
-    (void)esp_wifi_set_max_tx_power(56); /* ~14 dBm: avoids breadboard brownout/reflection issues on ESP32-C3 */
+    (void)esp_event_handler_register(IP_EVENT, IP_EVENT_AP_STAIPASSIGNED, on_ip_event, NULL);
     httpd_config_t http_config = HTTPD_DEFAULT_CONFIG();
+    http_config.lru_purge_enable = true;
+    http_config.max_open_sockets = 4;
+    ESP_LOGI(TAG, "Starting HTTP server...");
     err = httpd_start(&s_server, &http_config);
     if (err != ESP_OK) {
         /* Keep the AP running so a bare-board Wi-Fi test can still see it;
@@ -355,6 +372,7 @@ esp_err_t wifi_export_start(void)
         ESP_LOGE(TAG, "HTTP server start failed; AP remains active: %s", esp_err_to_name(err));
         return err;
     }
+    ESP_LOGI(TAG, "HTTP server started successfully");
     httpd_uri_t index = {.uri = "/", .method = HTTP_GET, .handler = index_handler};
     httpd_uri_t download = {.uri = "/download", .method = HTTP_GET, .handler = download_handler};
     httpd_uri_t status = {.uri = "/api/status", .method = HTTP_GET, .handler = status_handler};

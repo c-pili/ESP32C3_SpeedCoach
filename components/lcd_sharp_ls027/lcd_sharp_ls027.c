@@ -45,6 +45,9 @@ static esp_err_t sharp_send(const uint8_t *data, size_t len)
     esp_rom_delay_us(4); /* Meet thSCS >= 2 us hold time and 220 us data-update minimum. */
     gpio_set_level(CONFIG_LCD_SHARP_PIN_SCS, 0);
     esp_rom_delay_us(2); /* Sharp twSCSL >= 2 us minimum SCS low time between transactions. */
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "SPI transmit failed: %s", esp_err_to_name(err));
+    }
     return err;
 }
 
@@ -91,6 +94,8 @@ static void vcom_task(void *arg)
 esp_err_t lcd_sharp_ls027_init(void)
 {
     if (s_initialized) return ESP_OK;
+    ESP_LOGI(TAG, "Starting LCD init (SPI2_HOST, SCLK=%d, MOSI=%d, SCS=%d, CLK=%d)...",
+             CONFIG_LCD_SHARP_PIN_SCLK, CONFIG_LCD_SHARP_PIN_MOSI, CONFIG_LCD_SHARP_PIN_SCS, CONFIG_LCD_SHARP_SPI_CLOCK_HZ);
 
     s_bus_lock = xSemaphoreCreateMutex();
     ESP_RETURN_ON_FALSE(s_bus_lock, ESP_ERR_NO_MEM, TAG, "mutex allocation failed");
@@ -114,6 +119,7 @@ esp_err_t lcd_sharp_ls027_init(void)
         .quadhd_io_num = -1,
         .max_transfer_sz = sizeof(s_line_tx),
     };
+    ESP_LOGI(TAG, "Initializing SPI bus...");
     ESP_RETURN_ON_ERROR(spi_bus_initialize(SPI2_HOST, &bus_cfg, SPI_DMA_CH_AUTO),
                         TAG, "SPI bus init failed");
 
@@ -124,6 +130,7 @@ esp_err_t lcd_sharp_ls027_init(void)
         .queue_size = 1,
         .flags = SPI_DEVICE_BIT_LSBFIRST,
     };
+    ESP_LOGI(TAG, "Adding SPI device...");
     ESP_RETURN_ON_ERROR(spi_bus_add_device(SPI2_HOST, &dev_cfg, &s_spi),
                         TAG, "SPI device add failed");
 
