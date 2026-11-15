@@ -143,6 +143,12 @@ esp_err_t ui_status_bar_read_battery_percent(int *percent)
     return battery_drv_read_percent(s_bat, percent);
 }
 
+battery_drv_handle_t ui_status_bar_get_battery_handle(void)
+{
+    status_bar_battery_init_once();
+    return s_bat;
+}
+
 static void apply_gps_visual(ui_status_bar_t *bar)
 {
     if (!bar || !bar->gps_icon) {

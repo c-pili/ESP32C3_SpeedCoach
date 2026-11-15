@@ -28,6 +28,7 @@
 #include "app/app_settings.h"
 #include "app/app_time.h"
 #include "speedcoach_ble.h"
+#include "battery_drv.h"
 
 static const char *TAG = "app";
 static bool s_ui_ready = false;
@@ -124,6 +125,9 @@ void app_main(void)
         app_pwr_key_setup();
         ESP_LOGI(TAG, "UI initialized successfully");
     }
+
+    /* Provide battery driver handle to BLE for battery percentage reads */
+    speedcoach_ble_set_battery_handle(ui_status_bar_get_battery_handle());
 
     gps_neo_m8n_config_t gps_cfg = {
         .uart_num = UART_NUM_1,

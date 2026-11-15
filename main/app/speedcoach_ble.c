@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs_helper.h"
+#include "app_context.h"
 #include "activity.h"
 #include "sensor_hub.h"
 #include "battery_drv.h"
@@ -17,6 +18,7 @@
 #include "host/ble_uuid.h"
 #include "host/ble_hs.h"
 #include "host/ble_att.h"
+#include "host/util/util.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 
@@ -55,7 +57,7 @@ static const ble_uuid128_t CHAR_DISTANCE_UUID =
                      0x71, 0x4f, 0x2f, 0x2b, 0x00, 0x10, 0x7e, 0x9b);
 
 static const ble_uuid128_t CHAR_STROKE_RATE_UUID =
-    BLE_UUID128_INIT(0x14, 0x4f, 0x4d, 0xe6, 0xb2, 0x4b, 0x86, 0x9b,
+    BLE_UUID128_INIT(0x14, 0x4f, 0xd5, 0xe6, 0xb2, 0x4b, 0x86, 0x9b,
                      0x71, 0x4f, 0x2f, 0x2b, 0x00, 0x10, 0x7e, 0x9b);
 
 static const ble_uuid128_t CHAR_HEART_RATE_UUID =
@@ -102,6 +104,7 @@ static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static bool s_notify_enabled = false;
 static bool s_initialized = false;
 static bool s_running = false;
+static uint8_t s_own_addr_type = 0;
 
 static uint16_t chr_fw_version_val_handle;
 static uint16_t chr_battery_val_handle;
@@ -130,10 +133,6 @@ typedef enum {
     CMD_STOP_ACTIVITY = 2,
     CMD_PAUSE_ACTIVITY = 3,
     CMD_RESUME_ACTIVITY = 4,
-    CMD_SET_WORKOUT = 5,
-    CMD_SET_DISPLAY = 6,
-    CMD_GET_ACTIVITY_LIST = 7,
-    CMD_GET_ACTIVITY_DETAIL = 8,
     CMD_FORGET_HR = 9,
     CMD_FORGET_ROWPOD = 10,
 } speedcoach_cmd_t;
@@ -143,6 +142,7 @@ static volatile bool *sp_activity_paused = NULL;
 static float *sp_session_time_s = NULL;
 static activity_t *sp_activity = NULL;
 static workout_config_t *sp_workout_config = NULL;
+static battery_drv_handle_t sp_battery_handle = NULL;
 
 static int on_fw_version_read(uint16_t conn_handle, uint16_t attr_handle,
                                struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -321,7 +321,9 @@ static int on_battery_read(uint16_t conn_handle, uint16_t attr_handle,
                             struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     int pct = -1;
-    battery_drv_read_percent(&pct);
+    if (sp_battery_handle) {
+        battery_drv_read_percent(sp_battery_handle, &pct);
+    }
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     uint8_t val = (uint8_t)pct;
@@ -425,12 +427,14 @@ static int on_sensor_hr_read(uint16_t conn_handle, uint16_t attr_handle,
 {
     sensor_hub_slot_info_t slot = {0};
     sensor_hub_get_slot(SENSOR_KIND_HR, &slot);
+    uint8_t addr[6] = {0};
+    nvs_helper_get_hr_addr(addr);
     uint8_t data[27];
     data[0] = (uint8_t)slot.state;
     data[1] = slot.saved ? 1 : 0;
     data[2] = slot.paused ? 1 : 0;
     data[3] = slot.battery_pct;
-    memcpy(&data[4], slot.addr, 6);
+    memcpy(&data[4], addr, 6);
     memcpy(&data[10], slot.name, 16);
     os_mbuf_append(ctxt->om, data, sizeof(data));
     return 0;
@@ -443,20 +447,20 @@ static int on_sensor_rowpod_read(uint16_t conn_handle, uint16_t attr_handle,
     sensor_hub_live_t live = {0};
     sensor_hub_get_slot(SENSOR_KIND_ROWPOD, &slot);
     sensor_hub_get_live(&live);
+    uint8_t addr[6] = {0};
+    nvs_helper_get_sensor_addr(addr);
     uint8_t data[30];
     data[0] = (uint8_t)slot.state;
     data[1] = slot.saved ? 1 : 0;
     data[2] = slot.paused ? 1 : 0;
     data[3] = slot.battery_pct;
-    memcpy(&data[4], slot.addr, 6);
+    memcpy(&data[4], addr, 6);
     memcpy(&data[10], slot.name, 16);
     data[26] = live.pod_connected ? 1 : 0;
     data[27] = live.pod_valid ? 1 : 0;
     int16_t catch_ddeg = live.pod_catch_ddeg;
-    int16_t finish_ddeg = live.pod_finish_ddeg;
-    uint16_t arc_ddeg = live.pod_arc_ddeg;
-    uint16_t spm_x10 = live.pod_spm_x10;
     memcpy(&data[28], &catch_ddeg, 2);
+    os_mbuf_append(ctxt->om, data, sizeof(data));
     return 0;
 }
 
@@ -535,31 +539,29 @@ static int on_display_preset_write(uint16_t conn_handle, uint16_t attr_handle,
 static void execute_command(uint8_t cmd)
 {
     extern esp_err_t app_activity_post_cmd(int cmd);
-    extern esp_err_t sensor_hub_forget(int kind);
-    #define SENSOR_KIND_HR 1
-    #define SENSOR_KIND_ROWPOD 2
+    extern esp_err_t sensor_hub_forget(sensor_kind_t kind);
 
     switch (cmd) {
         case CMD_START_ACTIVITY:
-            if (sp_activity_recording && sp_activity_paused && sp_activity_recording) {
+            if (sp_activity_recording && sp_activity_paused) {
                 if (!*sp_activity_recording) {
-                    app_activity_post_cmd(1); // ACT_CMD_START
+                    app_activity_post_cmd(1);
                 }
             }
             break;
         case CMD_STOP_ACTIVITY:
             if (sp_activity_recording && *sp_activity_recording) {
-                app_activity_post_cmd(4); // ACT_CMD_STOP_SAVE
+                app_activity_post_cmd(4);
             }
             break;
         case CMD_PAUSE_ACTIVITY:
             if (sp_activity_recording && *sp_activity_recording && sp_activity_paused && !*sp_activity_paused) {
-                app_activity_post_cmd(2); // ACT_CMD_PAUSE
+                app_activity_post_cmd(2);
             }
             break;
         case CMD_RESUME_ACTIVITY:
             if (sp_activity_recording && *sp_activity_recording && sp_activity_paused && *sp_activity_paused) {
-                app_activity_post_cmd(3); // ACT_CMD_RESUME
+                app_activity_post_cmd(3);
             }
             break;
         case CMD_FORGET_HR:
@@ -715,8 +717,6 @@ static void on_reset(int reason)
 {
     ESP_LOGW(TAG, "NimBLE reset, reason=%d", reason);
 }
-
-static uint8_t s_own_addr_type = 0;
 
 static void on_sync(void)
 {
@@ -903,4 +903,9 @@ void speedcoach_ble_set_activity_state(volatile bool *recording, volatile bool *
     sp_activity_paused = paused;
     sp_session_time_s = session_time_s;
     sp_activity = (activity_t *)activity;
+}
+
+void speedcoach_ble_set_battery_handle(battery_drv_handle_t handle)
+{
+    sp_battery_handle = handle;
 }

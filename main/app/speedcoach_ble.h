@@ -56,6 +56,11 @@ void speedcoach_ble_set_workout_config(void *config);
  */
 void speedcoach_ble_set_activity_state(volatile bool *recording, volatile bool *paused, float *session_time_s, void *activity);
 
+/**
+ * Set the battery driver handle for reading battery percentage.
+ */
+void speedcoach_ble_set_battery_handle(battery_drv_handle_t handle);
+
 #ifdef __cplusplus
 }
 #endif
