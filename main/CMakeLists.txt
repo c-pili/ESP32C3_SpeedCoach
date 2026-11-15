@@ -8,6 +8,7 @@ idf_component_register(
         "app/app_power.c"
         "app/app_settings.c"
         "app/app_time.c"
+        "app/speedcoach_ble.c"
         "ui/core/ui_core.c"
         "ui/core/ui_core_state.c"
         "ui/core/ui_layout.c"
@@ -55,5 +56,4 @@ idf_component_register(
         gps_neo_m8n
         nvs_helper
         sensor_hub
-        speedcoach_ble
 )

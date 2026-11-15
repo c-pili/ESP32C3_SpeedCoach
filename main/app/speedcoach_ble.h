@@ -44,6 +44,18 @@ void speedcoach_ble_notify_sensor_update(void);
  */
 void speedcoach_ble_notify_settings_update(void);
 
+/**
+ * Set the workout config pointer for speedcoach_ble to access.
+ * Call this from main after s_workout_config is initialized.
+ */
+void speedcoach_ble_set_workout_config(void *config);
+
+/**
+ * Set the activity state pointers for speedcoach_ble to access.
+ * Call this from main after globals are initialized.
+ */
+void speedcoach_ble_set_activity_state(volatile bool *recording, volatile bool *paused, float *session_time_s, void *activity);
+
 #ifdef __cplusplus
 }
 #endif

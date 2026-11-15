@@ -8,7 +8,6 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs_helper.h"
-#include "app_context.h"
 #include "activity.h"
 #include "sensor_hub.h"
 #include "battery_drv.h"
@@ -56,7 +55,7 @@ static const ble_uuid128_t CHAR_DISTANCE_UUID =
                      0x71, 0x4f, 0x2f, 0x2b, 0x00, 0x10, 0x7e, 0x9b);
 
 static const ble_uuid128_t CHAR_STROKE_RATE_UUID =
-    BLE_UUID128_INIT(0x14, 0x4f, 0xd5, 0xe6, 0xb2, 0x4b, 0x86, 0x9b,
+    BLE_UUID128_INIT(0x14, 0x4f, 0x4d, 0xe6, 0xb2, 0x4b, 0x86, 0x9b,
                      0x71, 0x4f, 0x2f, 0x2b, 0x00, 0x10, 0x7e, 0x9b);
 
 static const ble_uuid128_t CHAR_HEART_RATE_UUID =
@@ -138,6 +137,12 @@ typedef enum {
     CMD_FORGET_HR = 9,
     CMD_FORGET_ROWPOD = 10,
 } speedcoach_cmd_t;
+
+static volatile bool *sp_activity_recording = NULL;
+static volatile bool *sp_activity_paused = NULL;
+static float *sp_session_time_s = NULL;
+static activity_t *sp_activity = NULL;
+static workout_config_t *sp_workout_config = NULL;
 
 static int on_fw_version_read(uint16_t conn_handle, uint16_t attr_handle,
                                struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -327,9 +332,9 @@ static int on_battery_read(uint16_t conn_handle, uint16_t attr_handle,
 static int on_activity_state_read(uint16_t conn_handle, uint16_t attr_handle,
                                    struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    uint8_t state = 0; // 0=idle, 1=recording, 2=paused
-    if (s_activity_recording) {
-        state = s_activity_paused ? 2 : 1;
+    uint8_t state = 0;
+    if (sp_activity_recording && *sp_activity_recording) {
+        state = (sp_activity_paused && *sp_activity_paused) ? 2 : 1;
     }
     os_mbuf_append(ctxt->om, &state, 1);
     return 0;
@@ -338,9 +343,11 @@ static int on_activity_state_read(uint16_t conn_handle, uint16_t attr_handle,
 static int on_speed_read(uint16_t conn_handle, uint16_t attr_handle,
                           struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    float speed = s_activity.avg_speed_mps;
-    if (!s_activity_recording) speed = 0.0f;
-    int32_t val = (int32_t)(speed * 1000); // mm/s
+    float speed = 0.0f;
+    if (sp_activity_recording && *sp_activity_recording && sp_activity) {
+        speed = sp_activity->avg_speed_mps;
+    }
+    int32_t val = (int32_t)(speed * 1000);
     os_mbuf_append(ctxt->om, &val, 4);
     return 0;
 }
@@ -349,10 +356,10 @@ static int on_pace_read(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     float pace = 0.0f;
-    if (s_activity_recording && s_activity.avg_speed_mps > 0.01f) {
-        pace = 500.0f / s_activity.avg_speed_mps; // sec/500m
+    if (sp_activity_recording && *sp_activity_recording && sp_activity && sp_activity->avg_speed_mps > 0.01f) {
+        pace = 500.0f / sp_activity->avg_speed_mps;
     }
-    int32_t val = (int32_t)(pace * 10); // deciseconds
+    int32_t val = (int32_t)(pace * 10);
     os_mbuf_append(ctxt->om, &val, 4);
     return 0;
 }
@@ -360,8 +367,11 @@ static int on_pace_read(uint16_t conn_handle, uint16_t attr_handle,
 static int on_distance_read(uint16_t conn_handle, uint16_t attr_handle,
                              struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    float dist = s_activity_recording ? s_activity.distance_m : 0.0f;
-    int32_t val = (int32_t)(dist * 100); // cm
+    float dist = 0.0f;
+    if (sp_activity_recording && *sp_activity_recording && sp_activity) {
+        dist = sp_activity->distance_m;
+    }
+    int32_t val = (int32_t)(dist * 100);
     os_mbuf_append(ctxt->om, &val, 4);
     return 0;
 }
@@ -369,8 +379,11 @@ static int on_distance_read(uint16_t conn_handle, uint16_t attr_handle,
 static int on_stroke_rate_read(uint16_t conn_handle, uint16_t attr_handle,
                                 struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    float spm = s_activity_recording ? s_activity.avg_spm : 0.0f;
-    int16_t val = (int16_t)(spm * 10); // 0.1 SPM
+    float spm = 0.0f;
+    if (sp_activity_recording && *sp_activity_recording && sp_activity) {
+        spm = sp_activity->avg_spm;
+    }
+    int16_t val = (int16_t)(spm * 10);
     os_mbuf_append(ctxt->om, &val, 2);
     return 0;
 }
@@ -388,7 +401,10 @@ static int on_heart_rate_read(uint16_t conn_handle, uint16_t attr_handle,
 static int on_session_time_read(uint16_t conn_handle, uint16_t attr_handle,
                                  struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    uint32_t time_s = s_activity_recording ? (uint32_t)(s_session_time_s) : 0;
+    uint32_t time_s = 0;
+    if (sp_activity_recording && *sp_activity_recording && sp_session_time_s) {
+        time_s = (uint32_t)(*sp_session_time_s);
+    }
     os_mbuf_append(ctxt->om, &time_s, 4);
     return 0;
 }
@@ -396,7 +412,10 @@ static int on_session_time_read(uint16_t conn_handle, uint16_t attr_handle,
 static int on_stroke_count_read(uint16_t conn_handle, uint16_t attr_handle,
                                  struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    uint32_t count = s_activity_recording ? s_activity.stroke_count : 0;
+    uint32_t count = 0;
+    if (sp_activity_recording && *sp_activity_recording && sp_activity) {
+        count = sp_activity->stroke_count;
+    }
     os_mbuf_append(ctxt->om, &count, 4);
     return 0;
 }
@@ -444,14 +463,15 @@ static int on_sensor_rowpod_read(uint16_t conn_handle, uint16_t attr_handle,
 static int on_workout_config_read(uint16_t conn_handle, uint16_t attr_handle,
                                    struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    // workout_config: mode(1), duration(4), distance(4), work(2), rest(2), reps(2)
-    uint8_t data[15];
-    data[0] = s_workout_config.mode;
-    memcpy(&data[1], &s_workout_config.duration_s, 4);
-    memcpy(&data[5], &s_workout_config.distance_m, 4);
-    memcpy(&data[9], &s_workout_config.interval_work_s, 2);
-    memcpy(&data[11], &s_workout_config.interval_rest_s, 2);
-    memcpy(&data[13], &s_workout_config.interval_reps, 2);
+    uint8_t data[15] = {0};
+    if (sp_workout_config) {
+        data[0] = sp_workout_config->mode;
+        memcpy(&data[1], &sp_workout_config->duration_s, 4);
+        memcpy(&data[5], &sp_workout_config->distance_m, 4);
+        memcpy(&data[9], &sp_workout_config->interval_work_s, 2);
+        memcpy(&data[11], &sp_workout_config->interval_rest_s, 2);
+        memcpy(&data[13], &sp_workout_config->interval_reps, 2);
+    }
     os_mbuf_append(ctxt->om, data, sizeof(data));
     return 0;
 }
@@ -462,29 +482,35 @@ static int on_workout_config_write(uint16_t conn_handle, uint16_t attr_handle,
     if (ctxt->om->om_len < 15) {
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
-    uint8_t *data = ctxt->om->om_data;
-    if (s_activity_recording) {
+    if (!sp_workout_config) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-    s_workout_config.mode = data[0];
-    memcpy(&s_workout_config.duration_s, &data[1], 4);
-    memcpy(&s_workout_config.distance_m, &data[5], 4);
-    memcpy(&s_workout_config.interval_work_s, &data[9], 2);
-    memcpy(&s_workout_config.interval_rest_s, &data[11], 2);
-    memcpy(&s_workout_config.interval_reps, &data[13], 2);
-    nvs_helper_set_workout_config(s_workout_config.mode,
-                                   s_workout_config.duration_s,
-                                   s_workout_config.distance_m,
-                                   s_workout_config.interval_work_s,
-                                   s_workout_config.interval_rest_s,
-                                   s_workout_config.interval_reps);
+    uint8_t *data = ctxt->om->om_data;
+    if (sp_activity_recording && *sp_activity_recording) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    sp_workout_config->mode = data[0];
+    memcpy(&sp_workout_config->duration_s, &data[1], 4);
+    memcpy(&sp_workout_config->distance_m, &data[5], 4);
+    memcpy(&sp_workout_config->interval_work_s, &data[9], 2);
+    memcpy(&sp_workout_config->interval_rest_s, &data[11], 2);
+    memcpy(&sp_workout_config->interval_reps, &data[13], 2);
+    nvs_helper_set_workout_config(sp_workout_config->mode,
+                                   sp_workout_config->duration_s,
+                                   sp_workout_config->distance_m,
+                                   sp_workout_config->interval_work_s,
+                                   sp_workout_config->interval_rest_s,
+                                   sp_workout_config->interval_reps);
     return 0;
 }
 
 static int on_display_preset_read(uint16_t conn_handle, uint16_t attr_handle,
                                    struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    uint8_t preset = s_workout_config.display_preset;
+    uint8_t preset = 0;
+    if (sp_workout_config) {
+        preset = sp_workout_config->display_preset;
+    }
     os_mbuf_append(ctxt->om, &preset, 1);
     return 0;
 }
@@ -495,9 +521,12 @@ static int on_display_preset_write(uint16_t conn_handle, uint16_t attr_handle,
     if (ctxt->om->om_len < 1) {
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
+    if (!sp_workout_config) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
     uint8_t preset = ctxt->om->om_data[0];
     if (preset <= 2) {
-        s_workout_config.display_preset = preset;
+        sp_workout_config->display_preset = preset;
         nvs_helper_set_display_preset(preset);
     }
     return 0;
@@ -505,25 +534,32 @@ static int on_display_preset_write(uint16_t conn_handle, uint16_t attr_handle,
 
 static void execute_command(uint8_t cmd)
 {
+    extern esp_err_t app_activity_post_cmd(int cmd);
+    extern esp_err_t sensor_hub_forget(int kind);
+    #define SENSOR_KIND_HR 1
+    #define SENSOR_KIND_ROWPOD 2
+
     switch (cmd) {
         case CMD_START_ACTIVITY:
-            if (!s_activity_recording && s_storage.mounted) {
-                app_activity_post_cmd(ACT_CMD_START);
+            if (sp_activity_recording && sp_activity_paused && sp_activity_recording) {
+                if (!*sp_activity_recording) {
+                    app_activity_post_cmd(1); // ACT_CMD_START
+                }
             }
             break;
         case CMD_STOP_ACTIVITY:
-            if (s_activity_recording) {
-                app_activity_post_cmd(ACT_CMD_STOP_SAVE);
+            if (sp_activity_recording && *sp_activity_recording) {
+                app_activity_post_cmd(4); // ACT_CMD_STOP_SAVE
             }
             break;
         case CMD_PAUSE_ACTIVITY:
-            if (s_activity_recording && !s_activity_paused) {
-                app_activity_post_cmd(ACT_CMD_PAUSE);
+            if (sp_activity_recording && *sp_activity_recording && sp_activity_paused && !*sp_activity_paused) {
+                app_activity_post_cmd(2); // ACT_CMD_PAUSE
             }
             break;
         case CMD_RESUME_ACTIVITY:
-            if (s_activity_recording && s_activity_paused) {
-                app_activity_post_cmd(ACT_CMD_RESUME);
+            if (sp_activity_recording && *sp_activity_recording && sp_activity_paused && *sp_activity_paused) {
+                app_activity_post_cmd(3); // ACT_CMD_RESUME
             }
             break;
         case CMD_FORGET_HR:
@@ -551,6 +587,7 @@ static int on_command_write(uint16_t conn_handle, uint16_t attr_handle,
 static int on_activity_list_read(uint16_t conn_handle, uint16_t attr_handle,
                                   struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
+    #define ACTIVITY_INDEX_PATH "/spiffs/activities/index.csv"
     FILE *f = fopen(ACTIVITY_INDEX_PATH, "r");
     if (!f) {
         os_mbuf_append(ctxt->om, "", 1);
@@ -569,7 +606,7 @@ static int on_activity_list_read(uint16_t conn_handle, uint16_t attr_handle,
 static int on_activity_detail_read(uint16_t conn_handle, uint16_t attr_handle,
                                     struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    // Expect activity ID as 4-byte input
+    #define ACTIVITY_DIR "/spiffs/activities"
     if (ctxt->om->om_len < 4) {
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
@@ -635,12 +672,11 @@ static int gap_event(struct ble_gap_event *event, void *arg)
                 ble_npl_callout_stop(&s_notify_timer);
                 s_notify_timer_armed = false;
             }
-            // Restart advertising
             ble_gap_adv_stop();
             struct ble_gap_adv_params adv_params = {0};
             adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
             adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
-            adv_params.itvl_min = 160; // 100ms
+            adv_params.itvl_min = 160;
             adv_params.itvl_max = 160;
             ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event, NULL);
             break;
@@ -680,6 +716,8 @@ static void on_reset(int reason)
     ESP_LOGW(TAG, "NimBLE reset, reason=%d", reason);
 }
 
+static uint8_t s_own_addr_type = 0;
+
 static void on_sync(void)
 {
     int rc = ble_hs_util_ensure_addr(0);
@@ -698,7 +736,6 @@ static void on_sync(void)
     ESP_LOGI(TAG, "BLE Address: %02x:%02x:%02x:%02x:%02x:%02x",
              addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
     
-    // Start advertising
     struct ble_hs_adv_fields fields = {0};
     fields.name = (uint8_t *)BLE_DEVICE_NAME;
     fields.name_len = strlen(BLE_DEVICE_NAME);
@@ -719,7 +756,7 @@ static void on_sync(void)
     struct ble_gap_adv_params adv_params = {0};
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
-    adv_params.itvl_min = 160; // 100ms
+    adv_params.itvl_min = 160;
     adv_params.itvl_max = 160;
     
     rc = ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event, NULL);
@@ -823,29 +860,13 @@ void speedcoach_ble_notify_activity_update(void)
         return;
     }
     
-    // Notify activity state
-    uint8_t state = s_activity_recording ? (s_activity_paused ? 2 : 1) : 0;
     ble_gatts_chr_updated(chr_activity_state_val_handle);
-    
-    // Notify speed
     ble_gatts_chr_updated(chr_speed_val_handle);
-    
-    // Notify pace
     ble_gatts_chr_updated(chr_pace_val_handle);
-    
-    // Notify distance
     ble_gatts_chr_updated(chr_distance_val_handle);
-    
-    // Notify stroke rate
     ble_gatts_chr_updated(chr_stroke_rate_val_handle);
-    
-    // Notify heart rate
     ble_gatts_chr_updated(chr_heart_rate_val_handle);
-    
-    // Notify session time
     ble_gatts_chr_updated(chr_session_time_val_handle);
-    
-    // Notify stroke count
     ble_gatts_chr_updated(chr_stroke_count_val_handle);
 }
 
@@ -871,4 +892,15 @@ void speedcoach_ble_notify_settings_update(void)
     ble_gatts_chr_updated(chr_activity_list_val_handle);
 }
 
-static uint8_t s_own_addr_type = 0;
+void speedcoach_ble_set_workout_config(void *config)
+{
+    sp_workout_config = (workout_config_t *)config;
+}
+
+void speedcoach_ble_set_activity_state(volatile bool *recording, volatile bool *paused, float *session_time_s, void *activity)
+{
+    sp_activity_recording = recording;
+    sp_activity_paused = paused;
+    sp_session_time_s = session_time_s;
+    sp_activity = (activity_t *)activity;
+}

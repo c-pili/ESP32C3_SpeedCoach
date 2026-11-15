@@ -57,6 +57,10 @@ void app_main(void)
     ESP_ERROR_CHECK(s_log_q ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_LOGI(TAG, "Activity queues created");
 
+    /* Provide global state pointers to speedcoach_ble */
+    speedcoach_ble_set_workout_config(&s_workout_config);
+    speedcoach_ble_set_activity_state(&s_activity_recording, &s_activity_paused, &s_session_time_s, &s_activity);
+
     /* Initialize BLE peripheral for SpeedCoach app connectivity */
     ESP_LOGI(TAG, "Starting SpeedCoach BLE peripheral...");
     esp_err_t ble_err = speedcoach_ble_init();
