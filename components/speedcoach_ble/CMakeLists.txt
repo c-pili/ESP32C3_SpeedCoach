@@ -5,4 +5,10 @@ idf_component_register(
         "include"
     REQUIRES
         bt
+    PRIV_REQUIRES
+        nvs_helper
+        app_context
+        activity
+        sensor_hub
+        battery_drv
 )
