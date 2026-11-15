@@ -54,3 +54,25 @@ uint8_t nvs_helper_get_hr_addr_type(void);
 void nvs_helper_set_hr_addr_type(uint8_t addr_type);
 void nvs_helper_get_hr_name(char *out, size_t out_len);
 void nvs_helper_set_hr_name(const char *name);
+
+/* Workout configuration */
+typedef struct {
+    uint8_t mode;
+    uint32_t duration_s;
+    uint32_t distance_m;
+    uint16_t interval_work_s;
+    uint16_t interval_rest_s;
+    uint16_t interval_reps;
+    uint8_t display_preset;
+} nvs_workout_config_t;
+
+void nvs_helper_get_workout_config(nvs_workout_config_t *out);
+void nvs_helper_set_workout_config(uint8_t mode, uint32_t duration_s, uint32_t distance_m,
+                                   uint16_t interval_work_s, uint16_t interval_rest_s,
+                                   uint16_t interval_reps);
+uint8_t nvs_helper_get_display_preset(void);
+void nvs_helper_set_display_preset(uint8_t preset);
+
+#ifdef __cplusplus
+}
+#endif

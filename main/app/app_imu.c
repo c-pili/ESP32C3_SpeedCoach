@@ -13,7 +13,6 @@
 #include "mpu6050.h"
 #include "sensor_hub.h"
 #include "stroke_detection.h"
-#include "wifi_export.h"
 
 #include <time.h>
 #include <string.h>
@@ -116,13 +115,13 @@ bool init_imu(void)
                                         IMU_SCL_GPIO,
                                         IMU_I2C_CLK);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "IMU I2C unavailable (%s); Wi-Fi setup remains available", esp_err_to_name(err));
+            ESP_LOGW(TAG, "IMU I2C unavailable (%s); BLE setup remains available", esp_err_to_name(err));
             memset(&s_imu, 0, sizeof(s_imu));
             return false;
         }
     }
     if (!probe_mpu6050()) {
-        ESP_LOGW(TAG, "MPU6050 unavailable; Wi-Fi setup and display remain available");
+        ESP_LOGW(TAG, "MPU6050 unavailable; BLE setup and display remain available");
         return false;
     }
     return true;

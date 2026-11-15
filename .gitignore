@@ -6,6 +6,8 @@
 /.idea/
 /.vscode/
 /eim_config.toml
+.kilo/
+.ollamassist/
 *.log
 .DS_Store
 .cache/

@@ -407,3 +407,70 @@ void nvs_helper_set_hr_name(const char *name)
 {
     set_str_key("hr_name", name);
 }
+
+void nvs_helper_get_workout_config(nvs_workout_config_t *out)
+{
+    if (!out) {
+        return;
+    }
+    /* Defaults: Free mode, 30min, 1000m, 60/60 intervals, 8 reps, preset 0 */
+    out->mode = 0;
+    out->duration_s = 30 * 60;
+    out->distance_m = 1000;
+    out->interval_work_s = 60;
+    out->interval_rest_s = 60;
+    out->interval_reps = 8;
+    out->display_preset = 0;
+
+    nvs_handle_t handle;
+    if (open_storage(&handle, NVS_READONLY) != ESP_OK) {
+        return;
+    }
+    nvs_get_u8(handle, "wk_mode", &out->mode);
+    nvs_get_u32(handle, "wk_dur", &out->duration_s);
+    nvs_get_u32(handle, "wk_dist", &out->distance_m);
+    nvs_get_u16(handle, "wk_work", &out->interval_work_s);
+    nvs_get_u16(handle, "wk_rest", &out->interval_rest_s);
+    nvs_get_u16(handle, "wk_reps", &out->interval_reps);
+    nvs_get_u8(handle, "disp_pre", &out->display_preset);
+    nvs_close(handle);
+}
+
+void nvs_helper_set_workout_config(uint8_t mode, uint32_t duration_s, uint32_t distance_m,
+                                   uint16_t interval_work_s, uint16_t interval_rest_s,
+                                   uint16_t interval_reps)
+{
+    nvs_handle_t handle;
+    if (open_storage(&handle, NVS_READWRITE) != ESP_OK) {
+        return;
+    }
+    nvs_set_u8(handle, "wk_mode", mode);
+    nvs_set_u32(handle, "wk_dur", duration_s);
+    nvs_set_u32(handle, "wk_dist", distance_m);
+    nvs_set_u16(handle, "wk_work", interval_work_s);
+    nvs_set_u16(handle, "wk_rest", interval_rest_s);
+    nvs_set_u16(handle, "wk_reps", interval_reps);
+    nvs_commit(handle);
+    nvs_close(handle);
+}
+
+uint8_t nvs_helper_get_display_preset(void)
+{
+    nvs_handle_t handle;
+    uint8_t val = 0;
+    if (open_storage(&handle, NVS_READONLY) == ESP_OK) {
+        nvs_get_u8(handle, "disp_pre", &val);
+        nvs_close(handle);
+    }
+    return val;
+}
+
+void nvs_helper_set_display_preset(uint8_t preset)
+{
+    nvs_handle_t handle;
+    if (open_storage(&handle, NVS_READWRITE) == ESP_OK) {
+        nvs_set_u8(handle, "disp_pre", preset);
+        nvs_commit(handle);
+        nvs_close(handle);
+    }
+}

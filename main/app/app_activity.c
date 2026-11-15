@@ -2,7 +2,6 @@
 
 #include "storage_paths.h"
 #include "app_context.h"
-#include "wifi_export.h"
 #include "app_imu.h"
 #include "activity.h"
 #include "activity_log.h"
@@ -16,6 +15,7 @@
 #include "ui_activity_summary_page.h"
 #include "ui_activity_detail_page.h"
 #include "esp_lvgl_port.h"
+#include "speedcoach_ble.h"
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
@@ -39,7 +39,6 @@ static bool start_activity_log(uint32_t id)
     activity_stop(&s_activity, time(NULL));
     if (s_activity_mutex)
         xSemaphoreGive(s_activity_mutex);
-    (void)wifi_export_start();
     if (s_disp) data_page_show_activity_toast(false);
     return false;
 }
@@ -70,19 +69,11 @@ void activity_worker_task(void *arg)
         {
             if (s_activity_mutex)
                 xSemaphoreGive(s_activity_mutex);
-            ESP_LOGI("ACT", "Stopping WiFi before BLE init, heap=%u", (unsigned)esp_get_free_heap_size());
-            (void)wifi_export_stop();
-            /* Allow Wi-Fi stack to fully release memory before BLE init */
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            ESP_LOGI("ACT", "Heap after WiFi stop: %u", (unsigned)esp_get_free_heap_size());
-            /* Start BLE for HR during activity */
-            if (!sensor_hub_available()) {
-                esp_err_t ble_err = sensor_hub_init();
-                if (ble_err != ESP_OK)
-                    ESP_LOGW("ACT", "BLE init failed at activity start: %s", esp_err_to_name(ble_err));
-            } else {
-                (void)sensor_hub_resume_hr();
-            }
+            ESP_LOGI("ACT", "Stopping BLE before activity start, heap=%u", (unsigned)esp_get_free_heap_size());
+            (void)speedcoach_ble_stop();
+            /* Allow BLE stack to fully release memory before activity */
+            vTaskDelay(pdMS_TO_TICKS(500));
+            ESP_LOGI("ACT", "Heap after BLE stop: %u", (unsigned)esp_get_free_heap_size());
 
             if (s_activity_mutex)
                 xSemaphoreTake(s_activity_mutex, portMAX_DELAY);
@@ -234,10 +225,10 @@ void activity_worker_task(void *arg)
             s_activity_recording = false;
             s_session_accumulated_us = 0;
 
-            /* Pause BLE and restart WiFi after activity */
+            /* Pause BLE and restart BLE after activity */
             (void)sensor_hub_pause_hr();
-            esp_err_t ap_err = wifi_export_start();
-            if (ap_err != ESP_OK) ESP_LOGE("ACT", "Wi-Fi export AP restart failed: %s", esp_err_to_name(ap_err));
+            esp_err_t ble_err = speedcoach_ble_init();
+            if (ble_err != ESP_OK) ESP_LOGE("ACT", "BLE peripheral restart failed: %s", esp_err_to_name(ble_err));
 
             /* Show summary for the saved activity */
             if (s_disp && snapshot_base[0] != '\0') {
@@ -287,14 +278,14 @@ void app_activity_monitor_targets(void)
         ? (float)(s_session_accumulated_us + (now_us - s_session_last_us)) * 1e-6f
         : (float)s_session_accumulated_us * 1e-6f;
     s_activity.duration_ms = (uint32_t)(s_session_time_s * 1000.0f);
-    if (s_workout_config.mode == WIFI_WORKOUT_TIME)
+    if (s_workout_config.mode == 1) /* WORKOUT_TIME */
         reached = s_session_time_s >= (float)s_workout_config.duration_s;
-    else if (s_workout_config.mode == WIFI_WORKOUT_DISTANCE)
+    else if (s_workout_config.mode == 2) /* WORKOUT_DISTANCE */
         reached = s_activity.distance_m >= (float)s_workout_config.distance_m;
-    else if (s_workout_config.mode == WIFI_WORKOUT_INTERVAL)
+    else if (s_workout_config.mode == 3) /* WORKOUT_INTERVAL */
         reached = s_session_time_s >= (float)(s_workout_config.interval_work_s +
                                                 s_workout_config.interval_rest_s) *
-                                      (float)s_workout_config.interval_reps;
+                                          (float)s_workout_config.interval_reps;
     if (s_activity_mutex) xSemaphoreGive(s_activity_mutex);
 
     if (reached && !stop_queued && app_activity_post_cmd(ACT_CMD_STOP_SAVE) == ESP_OK)

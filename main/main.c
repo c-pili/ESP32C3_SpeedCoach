@@ -14,7 +14,6 @@
 #include "sensor_hub.h"
 #include "rtc_pcf85063.h"
 #include "flash_storage.h"
-#include "wifi_export.h"
 
 #include "ui.h"
 #include "ui_data_page.h"
@@ -28,54 +27,12 @@
 #include "app/app_power.h"
 #include "app/app_settings.h"
 #include "app/app_time.h"
+#include "speedcoach_ble.h"
 
 static const char *TAG = "app";
 static bool s_ui_ready = false;
 
 #define LOG_QUEUE_LEN 32
-
-static esp_err_t web_configure_workout(const wifi_workout_config_t *config)
-{
-    if (!config || s_activity_recording) return ESP_ERR_INVALID_STATE;
-    s_workout_config = *config;
-    if (!s_ui_ready) return ESP_OK;
-    if (config->display_preset == 2) {
-        ui_go_to_page(UI_PAGE_ACCELERATION, false);
-    } else if (config->display_preset == 0) {
-        const data_metric_t metrics[] = {DATA_METRIC_PACE, DATA_METRIC_TIME, DATA_METRIC_SPM,
-                                         DATA_METRIC_DISTANCE, DATA_METRIC_HR};
-        data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
-    } else {
-        const data_metric_t metrics[] = {DATA_METRIC_SPEED, DATA_METRIC_TIME, DATA_METRIC_SPM,
-                                         DATA_METRIC_DISTANCE, DATA_METRIC_HR};
-        data_page_set_metrics(metrics, sizeof(metrics) / sizeof(metrics[0]));
-    }
-    if (config->display_preset != 2 && ui_get_current_page() == UI_PAGE_ACCELERATION)
-        ui_go_to_page(UI_PAGE_DATA, false);
-    return ESP_OK;
-}
-
-static esp_err_t web_start_activity(void)
-{
-    return app_activity_post_cmd(ACT_CMD_START);
-}
-
-static esp_err_t web_activity_ready(void)
-{
-    if (s_activity_recording || !s_storage.mounted) return ESP_ERR_INVALID_STATE;
-    return ESP_OK;
-}
-
-static esp_err_t web_start_sensor_hub(void)
-{
-    if (sensor_hub_available()) return ESP_OK;
-    esp_err_t err = sensor_hub_init();
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "BLE sensor hub init failed: %s", esp_err_to_name(err));
-        return err;
-    }
-    return ESP_OK;
-}
 
 void app_main(void)
 {
@@ -83,8 +40,7 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_helper_init());
     ESP_LOGI(TAG, "NVS init done");
 
-    /* Activity queues and callbacks are initialized before starting the Wi-Fi AP
-     * and UI so web requests and button presses are safe immediately. */
+    /* Activity queues and callbacks are initialized before starting BLE and UI. */
     s_activity_mutex = xSemaphoreCreateMutex();
     activity_init(&s_activity, 0);
     s_session_time_s = 0.0f;
@@ -101,17 +57,13 @@ void app_main(void)
     ESP_ERROR_CHECK(s_log_q ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_LOGI(TAG, "Activity queues created");
 
-    wifi_export_set_callbacks(web_configure_workout, web_activity_ready, web_start_activity,
-                              ui_status_bar_read_battery_percent, web_start_sensor_hub);
-
-    /* Bring up the AP before touching optional peripherals. This keeps the
-     * configuration page reachable even when an IMU, GPS, RTC or LCD is absent. */
-    ESP_LOGI(TAG, "Starting Wi-Fi AP...");
-    esp_err_t ap_err = wifi_export_start();
-    if (ap_err != ESP_OK) {
-        ESP_LOGE(TAG, "Wi-Fi export AP failed: %s", esp_err_to_name(ap_err));
+    /* Initialize BLE peripheral for SpeedCoach app connectivity */
+    ESP_LOGI(TAG, "Starting SpeedCoach BLE peripheral...");
+    esp_err_t ble_err = speedcoach_ble_init();
+    if (ble_err != ESP_OK) {
+        ESP_LOGE(TAG, "BLE peripheral init failed: %s", esp_err_to_name(ble_err));
     } else {
-        ESP_LOGI(TAG, "Wi-Fi AP started successfully");
+        ESP_LOGI(TAG, "BLE peripheral started successfully");
     }
 
     const bool imu_ready = init_imu();
@@ -181,7 +133,7 @@ void app_main(void)
     esp_err_t gps_err = gps_neo_m8n_init(&gps_cfg);
     if (gps_err == ESP_OK) gps_err = gps_neo_m8n_set_callback(gps_fix_cb, NULL);
     if (gps_err != ESP_OK)
-        ESP_LOGW(TAG, "GPS unavailable: %s; Wi-Fi remains enabled", esp_err_to_name(gps_err));
+        ESP_LOGW(TAG, "GPS unavailable: %s", esp_err_to_name(gps_err));
 
     BaseType_t logger_ok = xTaskCreate(activity_logger_task, "activity_logger",
                                        3072, NULL, 6, NULL);
@@ -206,7 +158,7 @@ void app_main(void)
     }
 
     /* Mount SPIFFS at idle priority so a first-boot partition format shares
-     * CPU 0 with IDLE0 and never triggers task_wdt or starves Wi-Fi/LVGL. */
+     * CPU 0 with IDLE0 and never triggers task_wdt or starves BLE/LVGL. */
     UBaseType_t orig_prio = uxTaskPriorityGet(NULL);
     vTaskPrioritySet(NULL, tskIDLE_PRIORITY);
     esp_err_t storage_err = flash_storage_mount(&s_storage);

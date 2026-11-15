@@ -52,8 +52,8 @@ idf_component_register(
         activity_store
         storage_paths
         flash_storage
-        wifi_export
         gps_neo_m8n
         nvs_helper
         sensor_hub
+        speedcoach_ble
 )
