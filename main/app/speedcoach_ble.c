@@ -170,15 +170,15 @@ static int on_sensor_hr_read(uint16_t conn_handle, uint16_t attr_handle,
 static int on_sensor_rowpod_read(uint16_t conn_handle, uint16_t attr_handle,
                                   struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int on_workout_config_read(uint16_t conn_handle, uint16_t attr_handle,
-                                   struct ble_gatt_access_ctxt *ctxt, void *arg);
-static int on_workout_config_write(uint16_t conn_handle, uint16_t attr_handle,
-                                     struct ble_gatt_access_ctxt *ctxt, void *arg) __attribute__((unused));
-static int on_display_preset_write(uint16_t conn_handle, uint16_t attr_handle,
-                                     struct ble_gatt_access_ctxt *ctxt, void *arg) __attribute__((unused));
-static int on_display_preset_write(uint16_t conn_handle, uint16_t attr_handle,
                                     struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int on_workout_config_write(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int on_display_preset_read(uint16_t conn_handle, uint16_t attr_handle,
+                                    struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int on_display_preset_write(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int on_command_write(uint16_t conn_handle, uint16_t attr_handle,
-                             struct ble_gatt_access_ctxt *ctxt, void *arg);
+                              struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int on_activity_list_read(uint16_t conn_handle, uint16_t attr_handle,
                                   struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int on_activity_detail_read(uint16_t conn_handle, uint16_t attr_handle,
@@ -481,8 +481,8 @@ static int on_workout_config_read(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
-static int on_workout_config_write(uint16_t conn_handle, uint16_t attr_handle,
-                                     struct ble_gatt_access_ctxt *ctxt, void *arg) __attribute__((unused))
+static int __attribute__((unused)) on_workout_config_write(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     if (ctxt->om->om_len < 15) {
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -520,8 +520,8 @@ static int on_display_preset_read(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
-static int on_display_preset_write(uint16_t conn_handle, uint16_t attr_handle,
-                                     struct ble_gatt_access_ctxt *ctxt, void *arg) __attribute__((unused))
+static int __attribute__((unused)) on_display_preset_write(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     if (ctxt->om->om_len < 1) {
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
