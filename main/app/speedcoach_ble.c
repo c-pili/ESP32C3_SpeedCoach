@@ -322,7 +322,7 @@ static int on_battery_read(uint16_t conn_handle, uint16_t attr_handle,
 {
     int pct = -1;
     if (sp_battery_handle) {
-        battery_drv_read_percent(sp_battery_handle, &pct);
+        battery_drv_read_percent((battery_drv_handle_t)sp_battery_handle, &pct);
     }
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
@@ -905,7 +905,7 @@ void speedcoach_ble_set_activity_state(volatile bool *recording, volatile bool *
     sp_activity = (activity_t *)activity;
 }
 
-void speedcoach_ble_set_battery_handle(battery_drv_handle_t handle)
+void speedcoach_ble_set_battery_handle(void *handle)
 {
-    sp_battery_handle = handle;
+    sp_battery_handle = (battery_drv_handle_t)handle;
 }

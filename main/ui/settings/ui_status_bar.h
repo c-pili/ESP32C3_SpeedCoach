@@ -61,4 +61,8 @@ void ui_status_bar_set_default(ui_status_bar_t *bar);
 
 void ui_status_bar_apply_snapshot(const coach_ui_snapshot_t *snap);
 esp_err_t ui_status_bar_read_battery_percent(int *percent);
-battery_drv_handle_t ui_status_bar_get_battery_handle(void);
+void *ui_status_bar_get_battery_handle(void);
+
+#ifdef __cplusplus
+}
+#endif

@@ -59,7 +59,7 @@ void speedcoach_ble_set_activity_state(volatile bool *recording, volatile bool *
 /**
  * Set the battery driver handle for reading battery percentage.
  */
-void speedcoach_ble_set_battery_handle(battery_drv_handle_t handle);
+void speedcoach_ble_set_battery_handle(void *handle);
 
 #ifdef __cplusplus
 }
