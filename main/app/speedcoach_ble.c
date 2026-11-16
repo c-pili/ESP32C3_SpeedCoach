@@ -736,9 +736,6 @@ static void on_sync(void)
              addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
     
     struct ble_hs_adv_fields fields = {0};
-    fields.name = (uint8_t *)BLE_DEVICE_NAME;
-    fields.name_len = strlen(BLE_DEVICE_NAME);
-    fields.name_is_complete = 1;
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     fields.uuids16 = NULL;
     fields.num_uuids16 = 0;
@@ -749,6 +746,17 @@ static void on_sync(void)
     rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
         ESP_LOGE(TAG, "Set adv fields failed: %d", rc);
+        return;
+    }
+
+    struct ble_hs_adv_fields rsp_fields = {0};
+    rsp_fields.name = (uint8_t *)BLE_DEVICE_NAME;
+    rsp_fields.name_len = strlen(BLE_DEVICE_NAME);
+    rsp_fields.name_is_complete = 1;
+
+    rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Set adv rsp fields failed: %d", rc);
         return;
     }
     
