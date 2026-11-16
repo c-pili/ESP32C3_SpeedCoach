@@ -38,6 +38,7 @@ static bool s_ui_ready = false;
 void app_main(void)
 {
     /* The ESP-IDF Wi-Fi driver stores calibration/configuration in NVS. */
+    ESP_LOGI(TAG, "=== APP_MAIN START ===");
     ESP_ERROR_CHECK(nvs_helper_init());
     ESP_LOGI(TAG, "NVS init done");
 
@@ -63,8 +64,10 @@ void app_main(void)
     speedcoach_ble_set_activity_state(&s_activity_recording, &s_activity_paused, &s_session_time_s, &s_activity);
 
     /* Initialize BLE peripheral for SpeedCoach app connectivity */
+    ESP_LOGI(TAG, "=== STARTING BLE INIT ===");
     ESP_LOGI(TAG, "Starting SpeedCoach BLE peripheral...");
     esp_err_t ble_err = speedcoach_ble_init();
+    ESP_LOGI(TAG, "=== BLE INIT RETURNED: %s ===", esp_err_to_name(ble_err));
     if (ble_err != ESP_OK) {
         ESP_LOGE(TAG, "BLE peripheral init failed: %s", esp_err_to_name(ble_err));
     } else {
