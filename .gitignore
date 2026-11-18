@@ -1,10 +1,16 @@
 # ESP-IDF build output
 /build/
 /cmake-build-*/
+/build_*/
+*.bin
+*.elf
+*.map
+*.uf2
 
 # Local IDE state and machine-specific configuration
-/.idea/
-/.vscode/
+.idea/
+.vscode/
+.clangd
 /eim_config.toml
 .kilo/
 .ollamassist/
@@ -23,8 +29,36 @@ __pycache__/
 /sdkconfig.old
 
 # Components downloaded by the ESP-IDF component manager
-/managed_components/
+managed_components/
+
+# Component manager lock file (auto-generated, reproducible from idf_component.yml)
+dependencies.lock
 
 # Generated filesystem image
 /storage_image/*
 !/storage_image/.gitkeep
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.cmake
+
+# Ninja build files
+build.ninja
+*.ninja*
+.ninja_deps
+.ninja_log
+
+# ESP-IDF specific
+/partition_table/
+/bootloader/
+/prebuilt/
+/spiffs_image/
+
+# Test artifacts
+/test_results/
+/coverage/
+
+# Gemini AI assistant
+.gemini/
