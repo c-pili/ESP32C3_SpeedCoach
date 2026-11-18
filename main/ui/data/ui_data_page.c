@@ -52,8 +52,16 @@ static void metric_title_unit(data_metric_t metric, const char **title, const ch
         *title = "Time";
         *unit = "";
         break;
+    case DATA_METRIC_TIME_REMAINING:
+        *title = "Remaining";
+        *unit = "";
+        break;
     case DATA_METRIC_DISTANCE:
         *title = "Distance";
+        *unit = "m";
+        break;
+    case DATA_METRIC_DISTANCE_REMAINING:
+        *title = "Remain";
         *unit = "m";
         break;
     case DATA_METRIC_SPEED:
@@ -129,8 +137,14 @@ static void apply_metric_to_slot(int idx)
     case DATA_METRIC_TIME:
         ui_fmt_time_s(s_values.time_s, value_buf, sizeof(value_buf));
         break;
+    case DATA_METRIC_TIME_REMAINING:
+        ui_fmt_time_s(s_values.time_remaining_s, value_buf, sizeof(value_buf));
+        break;
     case DATA_METRIC_DISTANCE:
         ui_fmt_distance_m(s_values.distance_m, value_buf, sizeof(value_buf), &unit_override);
+        break;
+    case DATA_METRIC_DISTANCE_REMAINING:
+        ui_fmt_distance_m(s_values.distance_remaining_m, value_buf, sizeof(value_buf), &unit_override);
         break;
     case DATA_METRIC_SPEED:
         if (!isfinite(s_values.speed_mps) || s_values.speed_mps < 0.0f) {
@@ -336,6 +350,50 @@ void data_page_apply_theme(void)
     }
 }
 
+void data_page_set_workout_mode(uint8_t mode, uint32_t duration_s, uint32_t distance_m)
+{
+    if (!s_root) {
+        return;
+    }
+    lvgl_port_lock(0);
+    
+    /* Replace TIME slot with TIME_REMAINING when time workout is active */
+    if (mode == 1) { /* WORKOUT_TIME */
+        for (int i = 0; i < DATA_SLOT_MAX; i++) {
+            if (s_slot_metric[i] == DATA_METRIC_TIME) {
+                s_slot_metric[i] = DATA_METRIC_TIME_REMAINING;
+                apply_metric_to_slot(i);
+            }
+        }
+    } else if (mode == 2) { /* WORKOUT_DISTANCE */
+        for (int i = 0; i < DATA_SLOT_MAX; i++) {
+            if (s_slot_metric[i] == DATA_METRIC_DISTANCE) {
+                s_slot_metric[i] = DATA_METRIC_DISTANCE_REMAINING;
+                apply_metric_to_slot(i);
+            }
+        }
+    } else if (mode == 3) { /* WORKOUT_INTERVAL */
+        for (int i = 0; i < DATA_SLOT_MAX; i++) {
+            if (s_slot_metric[i] == DATA_METRIC_TIME) {
+                s_slot_metric[i] = DATA_METRIC_TIME_REMAINING;
+                apply_metric_to_slot(i);
+            }
+        }
+    } else {
+        /* No workout - restore original metrics */
+        for (int i = 0; i < DATA_SLOT_MAX; i++) {
+            if (s_slot_metric[i] == DATA_METRIC_TIME_REMAINING) {
+                s_slot_metric[i] = DATA_METRIC_TIME;
+                apply_metric_to_slot(i);
+            } else if (s_slot_metric[i] == DATA_METRIC_DISTANCE_REMAINING) {
+                s_slot_metric[i] = DATA_METRIC_DISTANCE;
+                apply_metric_to_slot(i);
+            }
+        }
+    }
+    lvgl_port_unlock();
+}
+
 void data_page_set_orientation(ui_orientation_t o)
 {
     (void)o;
@@ -395,6 +453,8 @@ void data_page_apply_snapshot(const coach_ui_snapshot_t *snap)
     }
     s_values.time_s = snap->time_s;
     s_values.distance_m = snap->distance_m;
+    s_values.time_remaining_s = snap->time_remaining_s;
+    s_values.distance_remaining_m = snap->distance_remaining_m;
     s_values.pace_s_per_500m = snap->pace_s_per_500m;
     s_values.avg_pace_s_per_500m = snap->avg_pace_s_per_500m;
     s_values.speed_mps = snap->speed_mps;

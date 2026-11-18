@@ -30,6 +30,8 @@ typedef struct {
 
     float time_s;
     float distance_m;
+    float time_remaining_s;
+    float distance_remaining_m;
     float pace_s_per_500m;
     float avg_pace_s_per_500m;
     float speed_mps;

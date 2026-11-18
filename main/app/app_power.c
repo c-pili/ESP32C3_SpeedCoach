@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "gps_neo_m8n.h"
+#include "lcd_sharp_ls027.h"
 #include "mpu6050.h"
 #include "pwr_key.h"
 #include "ui.h"
@@ -66,6 +67,20 @@ void on_shutdown_confirmed(void)
     }
     gps_neo_m8n_power_down();
     mpu6050_sleep(&s_imu);
+    
+    /* Turn off display before deep sleep */
+    if (s_disp) {
+        lcd_sharp_ls027_blank_display();
+    }
+    
+    /* Configure EXT0 wakeup on power button (GPIO 5, active low) */
+    /* This allows waking from deep sleep by pressing the button */
+    ESP_ERROR_CHECK(gpio_set_direction(GPIO_NUM_5, GPIO_MODE_INPUT));
+    ESP_ERROR_CHECK(gpio_pullup_en(GPIO_NUM_5));
+    ESP_ERROR_CHECK(gpio_pulldown_dis(GPIO_NUM_5));
+    ESP_ERROR_CHECK(esp_sleep_enable_gpio_wakeup()); // Enable GPIO wakeup source
+    ESP_ERROR_CHECK(gpio_wakeup_enable(GPIO_NUM_5, GPIO_INTR_LOW_LEVEL)); // Wake on low level
+    
     pwr_key_set_hold(false);
     
     /* Allow time for power latch to cut power, then enter deep sleep as fallback */

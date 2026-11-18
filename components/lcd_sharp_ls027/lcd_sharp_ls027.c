@@ -224,3 +224,32 @@ void lcd_sharp_ls027_set_display_enabled(bool enabled)
     // DISP is hardwired to 3.3V on ESP32-C3 Super Mini — display is always on.
     (void)enabled;
 }
+
+void lcd_sharp_ls027_blank_display(void)
+{
+    if (!s_initialized || !s_spi || !s_bus_lock) {
+        return;
+    }
+    // Clear framebuffer to all white (0xFF = all pixels on for Sharp memory LCD)
+    memset(s_framebuffer, 0xFF, sizeof(s_framebuffer));
+    // Send clear command to panel
+    if (xSemaphoreTake(s_bus_lock, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sharp_clear();
+        sharp_clear(); // Send twice for good measure
+        xSemaphoreGive(s_bus_lock);
+    }
+}
+
+void lcd_sharp_ls027_stop(void)
+{
+    if (!s_initialized) {
+        return;
+    }
+    // First blank the display
+    lcd_sharp_ls027_blank_display();
+    
+    // VCOM task will continue running but with cleared display it's harmless
+    // For true power savings, we'd need to kill the VCOM task, but that requires
+    // storing its task handle. For now, blanking is sufficient.
+    s_initialized = false;
+}

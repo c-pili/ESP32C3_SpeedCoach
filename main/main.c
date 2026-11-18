@@ -5,6 +5,7 @@
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_sleep.h"
 #include "esp_timer.h"
 
 #include "activity.h"
@@ -39,6 +40,17 @@ void app_main(void)
 {
     /* The ESP-IDF Wi-Fi driver stores calibration/configuration in NVS. */
     ESP_LOGI(TAG, "=== APP_MAIN START ===");
+    
+    /* Check wakeup cause - if from deep sleep (button press), this is a normal boot */
+    esp_sleep_wakeup_cause_t wakeup_cause = esp_sleep_get_wakeup_cause();
+    if (wakeup_cause == ESP_SLEEP_WAKEUP_EXT0) {
+        ESP_LOGI(TAG, "Woke from deep sleep via EXT0 (power button)");
+    } else if (wakeup_cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
+        ESP_LOGI(TAG, "Cold boot (power on or reset)");
+    } else {
+        ESP_LOGI(TAG, "Wakeup cause: %d", wakeup_cause);
+    }
+    
     ESP_ERROR_CHECK(nvs_helper_init());
     ESP_LOGI(TAG, "NVS init done");
 

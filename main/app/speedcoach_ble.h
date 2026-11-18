@@ -45,6 +45,11 @@ void speedcoach_ble_notify_sensor_update(void);
 void speedcoach_ble_notify_settings_update(void);
 
 /**
+ * Notify connected client of live preview data.
+ */
+void speedcoach_ble_notify_live_preview(void);
+
+/**
  * Set the workout config pointer for speedcoach_ble to access.
  * Call this from main after s_workout_config is initialized.
  */

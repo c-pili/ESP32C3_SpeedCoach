@@ -23,6 +23,8 @@ void coach_ui_snapshot_init(void)
     s_snap.stroke_len_m = NAN;
     s_snap.time_s = NAN;
     s_snap.distance_m = NAN;
+    s_snap.time_remaining_s = 0.0f;
+    s_snap.distance_remaining_m = 0.0f;
     s_snap.last_split_pace_s = NAN;
     s_snap.last_split_delta_s = NAN;
     s_valid = false;

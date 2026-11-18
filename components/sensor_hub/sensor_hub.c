@@ -1011,6 +1011,29 @@ esp_err_t sensor_hub_resume_hr(void)
     return ESP_OK;
 }
 
+esp_err_t sensor_hub_pair(sensor_kind_t kind, const uint8_t *addr, const char *name)
+{
+    if (!s_mux || !s_available) return ESP_ERR_INVALID_STATE;
+    if (kind >= SENSOR_KIND_COUNT) return ESP_ERR_INVALID_ARG;
+    
+    xSemaphoreTake(s_mux, portMAX_DELAY);
+    sensor_slot_t *slot = &s_slots[kind];
+    slot->paused = false;
+    slot->saved = true;
+    if (addr) {
+        memcpy(slot->addr, addr, 6);
+    }
+    if (name) {
+        snprintf(slot->name, sizeof(slot->name), "%s", name);
+    }
+    slot->backoff_ms = 0;
+    xSemaphoreGive(s_mux);
+    
+    ESP_LOGI(TAG, "paired %s", kind == SENSOR_KIND_HR ? "HR" : "RowPod");
+    arm_hr_if_needed();
+    return ESP_OK;
+}
+
 void sensor_hub_get_slot(sensor_kind_t kind, sensor_hub_slot_info_t *out)
 {
     if (!out) {

@@ -97,6 +97,7 @@ void activity_worker_task(void *arg)
                 continue;
 
             if (s_disp) data_page_show_activity_toast(true);
+            if (s_disp) data_page_set_workout_mode(s_workout_config.mode, s_workout_config.duration_s, s_workout_config.distance_m);
             ESP_LOGI("ACT", "START id=%lu", (unsigned long)id);
             continue;
         }
@@ -230,6 +231,11 @@ void activity_worker_task(void *arg)
             esp_err_t ble_err = speedcoach_ble_init();
             if (ble_err != ESP_OK) ESP_LOGE("ACT", "BLE peripheral restart failed: %s", esp_err_to_name(ble_err));
 
+            if (s_disp) data_page_set_workout_mode(0, 0, 0);
+
+            /* Notify connected phone that activity list has changed */
+            speedcoach_ble_notify_settings_update();
+
             /* Show summary for the saved activity */
             if (s_disp && snapshot_base[0] != '\0') {
                 char rel_path[512];
@@ -278,15 +284,37 @@ void app_activity_monitor_targets(void)
         ? (float)(s_session_accumulated_us + (now_us - s_session_last_us)) * 1e-6f
         : (float)s_session_accumulated_us * 1e-6f;
     s_activity.duration_ms = (uint32_t)(s_session_time_s * 1000.0f);
-    if (s_workout_config.mode == 1) /* WORKOUT_TIME */
+    
+    float time_remaining_s = 0.0f;
+    float distance_remaining_m = 0.0f;
+    
+    if (s_workout_config.mode == 1) { /* WORKOUT_TIME */
         reached = s_session_time_s >= (float)s_workout_config.duration_s;
-    else if (s_workout_config.mode == 2) /* WORKOUT_DISTANCE */
+        time_remaining_s = (float)s_workout_config.duration_s - s_session_time_s;
+        if (time_remaining_s < 0.0f) time_remaining_s = 0.0f;
+    } else if (s_workout_config.mode == 2) { /* WORKOUT_DISTANCE */
         reached = s_activity.distance_m >= (float)s_workout_config.distance_m;
-    else if (s_workout_config.mode == 3) /* WORKOUT_INTERVAL */
+        distance_remaining_m = (float)s_workout_config.distance_m - s_activity.distance_m;
+        if (distance_remaining_m < 0.0f) distance_remaining_m = 0.0f;
+    } else if (s_workout_config.mode == 3) { /* WORKOUT_INTERVAL */
         reached = s_session_time_s >= (float)(s_workout_config.interval_work_s +
                                                 s_workout_config.interval_rest_s) *
                                           (float)s_workout_config.interval_reps;
+        float total_interval_s = (float)(s_workout_config.interval_work_s +
+                                         s_workout_config.interval_rest_s) *
+                                 (float)s_workout_config.interval_reps;
+        time_remaining_s = total_interval_s - s_session_time_s;
+        if (time_remaining_s < 0.0f) time_remaining_s = 0.0f;
+    }
     if (s_activity_mutex) xSemaphoreGive(s_activity_mutex);
+
+    /* Publish remaining time/distance to UI */
+    coach_ui_snapshot_t snap;
+    if (coach_ui_snapshot_copy(&snap)) {
+        snap.time_remaining_s = time_remaining_s;
+        snap.distance_remaining_m = distance_remaining_m;
+        coach_ui_snapshot_publish(&snap);
+    }
 
     if (reached && !stop_queued && app_activity_post_cmd(ACT_CMD_STOP_SAVE) == ESP_OK)
         stop_queued = true;

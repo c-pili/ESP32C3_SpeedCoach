@@ -81,6 +81,9 @@ esp_err_t sensor_hub_rowpod_set_side(bool bow);
 esp_err_t sensor_hub_pause_hr(void);
 esp_err_t sensor_hub_resume_hr(void);
 
+/** Pair a sensor (called from BLE command) */
+esp_err_t sensor_hub_pair(sensor_kind_t kind, const uint8_t *addr, const char *name);
+
 #ifdef __cplusplus
 }
 #endif

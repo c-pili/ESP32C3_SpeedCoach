@@ -8,7 +8,9 @@ typedef enum {
     DATA_METRIC_PACE,
     DATA_METRIC_AVG_PACE,
     DATA_METRIC_TIME,
+    DATA_METRIC_TIME_REMAINING,
     DATA_METRIC_DISTANCE,
+    DATA_METRIC_DISTANCE_REMAINING,
     DATA_METRIC_SPEED,
     DATA_METRIC_SPM,
     DATA_METRIC_STROKE_LEN,
@@ -22,6 +24,8 @@ typedef enum {
 typedef struct {
     float time_s;
     float distance_m;
+    float time_remaining_s;
+    float distance_remaining_m;
     float pace_s_per_500m;
     float avg_pace_s_per_500m;
     float speed_mps;
@@ -42,5 +46,7 @@ void data_page_set_time_s(float time_s); /* LVGL thread only */
 void data_page_set_values(const data_values_t *v);
 void data_page_apply_snapshot(const coach_ui_snapshot_t *snap);
 void data_page_apply_theme(void);
+
+void data_page_set_workout_mode(uint8_t mode, uint32_t duration_s, uint32_t distance_m);
 
 void data_page_show_activity_toast(bool recording);

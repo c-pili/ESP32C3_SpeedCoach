@@ -474,3 +474,13 @@ void nvs_helper_set_display_preset(uint8_t preset)
         nvs_close(handle);
     }
 }
+
+void nvs_helper_get_device_name(char *out, size_t out_len)
+{
+    get_str_key("dev_name", out, out_len);
+}
+
+void nvs_helper_set_device_name(const char *name)
+{
+    set_str_key("dev_name", name);
+}

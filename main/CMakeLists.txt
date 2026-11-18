@@ -39,21 +39,22 @@ idf_component_register(
         "ui/sensors"
         "ui/menu"
         "ui/settings"
-    REQUIRES
-        lcd_sharp_ls027
-        esp_lvgl_port
-        i2c_helper
-        mpu6050
-        stroke_detection
-        rtc_pcf85063
-        pwr_key
-        battery_drv
-        activity
-        activity_log
-        activity_store
-        storage_paths
-        flash_storage
-        gps_neo_m8n
-        nvs_helper
-        sensor_hub
+   REQUIRES
+    bt
+    lcd_sharp_ls027
+    esp_lvgl_port
+    i2c_helper
+    mpu6050
+    stroke_detection
+    rtc_pcf85063
+    pwr_key
+    battery_drv
+    activity
+    activity_log
+    activity_store
+    storage_paths
+    flash_storage
+    gps_neo_m8n
+    nvs_helper
+    sensor_hub
 )

@@ -11,4 +11,6 @@
 esp_err_t lcd_sharp_ls027_init(void);
 lv_display_t *lcd_sharp_ls027_add_lvgl_display(void);
 void lcd_sharp_ls027_set_display_enabled(bool enabled);
+void lcd_sharp_ls027_blank_display(void);
+void lcd_sharp_ls027_stop(void);
 

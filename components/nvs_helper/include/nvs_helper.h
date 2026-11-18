@@ -73,6 +73,10 @@ void nvs_helper_set_workout_config(uint8_t mode, uint32_t duration_s, uint32_t d
 uint8_t nvs_helper_get_display_preset(void);
 void nvs_helper_set_display_preset(uint8_t preset);
 
+/* Device name */
+void nvs_helper_get_device_name(char *out, size_t out_len);
+void nvs_helper_set_device_name(const char *name);
+
 #ifdef __cplusplus
 }
 #endif

@@ -29,8 +29,10 @@ static void apply_backlight(uint8_t percent)
         return;
     }
     s_applied_brightness = percent;
-    /* The bare Sharp panel is reflective and has no backlight. Zero controls DISP. */
-    lcd_sharp_ls027_set_display_enabled(percent != 0);
+    if (percent == 0) {
+        lcd_sharp_ls027_blank_display();
+    }
+    // No backlight to control on Sharp memory LCD
 }
 
 static void snapshot_idle(coach_ui_snapshot_t *snap)
