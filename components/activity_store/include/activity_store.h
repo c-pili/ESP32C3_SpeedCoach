@@ -49,6 +49,8 @@ esp_err_t activity_store_load_splits_page(const char *in_path_or_base,
                                           size_t *out_total_count,
                                           activity_store_summary_t *out_summary);
 
+esp_err_t activity_store_delete_file(uint32_t file_id);
+
 void activity_store_format_dist(char *out, size_t out_len, float meters);
 void activity_store_format_pace_500(char *out, size_t out_len, float pace_s_per500);
 

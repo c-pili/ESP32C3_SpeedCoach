@@ -14,7 +14,9 @@
 #include "sensor_hub.h"
 #include "battery_drv.h"
 #include "storage_paths.h"
+#include "activity_store.h"
 #include "flash_storage.h"
+#include "activity_store.h"
 
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
@@ -204,6 +206,7 @@ typedef enum {
     CMD_PAIR_HR = 30,              // New: pair HR sensor
     CMD_PAIR_ROWPOD = 31,          // New: pair RowPod
     CMD_FORMAT_STORAGE = 99,       // New: format storage
+    CMD_DELETE_FILE = 100,         // New: delete specific file
 } speedcoach_cmd_t;
 
 static volatile bool *sp_activity_recording = NULL;
@@ -270,8 +273,8 @@ static int on_command_write(uint16_t conn_handle, uint16_t attr_handle,
                             struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int on_activity_list_read(uint16_t conn_handle, uint16_t attr_handle,
                                   struct ble_gatt_access_ctxt *ctxt, void *arg);
-static int on_activity_detail_read(uint16_t conn_handle, uint16_t attr_handle,
-                                    struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int on_activity_detail_access(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 static const struct ble_gatt_chr_def gatt_chrs[] = {
     {
@@ -378,8 +381,8 @@ static const struct ble_gatt_chr_def gatt_chrs[] = {
     },
     {
         .uuid = &CHAR_ACTIVITY_DETAIL_UUID.u,
-        .access_cb = on_activity_detail_read,
-        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+        .access_cb = on_activity_detail_access,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
         .val_handle = &chr_activity_detail_val_handle,
     },
     // New characteristics
@@ -1132,10 +1135,12 @@ case CMD_PAIR_HR:
             ESP_LOGI(TAG, "BLE CMD: FORMAT_STORAGE");
             flash_storage_format();
             break;
+        case CMD_DELETE_FILE:
+            ESP_LOGI(TAG, "BLE CMD: DELETE_FILE (no-op, handled in on_command_write)");
+            break;
         default:
             break;
     }
-}
 }
 
 static int on_command_write(uint16_t conn_handle, uint16_t attr_handle,
@@ -1182,6 +1187,21 @@ static int on_command_write(uint16_t conn_handle, uint16_t attr_handle,
         return 0;
     }
     
+    // For CMD_DELETE_FILE, the next 4 bytes contain the file ID
+    if (cmd == CMD_DELETE_FILE && ctxt->om->om_len >= 5) {
+        uint32_t file_id = 0;
+        memcpy(&file_id, &ctxt->om->om_data[1], 4);
+        ESP_LOGI(TAG, "BLE RX CMD_DELETE_FILE: file_id=%u", file_id);
+        
+        esp_err_t err = activity_store_delete_file(file_id);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "BLE TX: File %u deleted successfully", file_id);
+        } else {
+            ESP_LOGE(TAG, "BLE TX: Failed to delete file %u: %s", file_id, esp_err_to_name(err));
+        }
+        return 0;
+    }
+    
     execute_command(cmd);
     return 0;
 }
@@ -1206,36 +1226,43 @@ static int on_activity_list_read(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
-static int on_activity_detail_read(uint16_t conn_handle, uint16_t attr_handle,
-                                    struct ble_gatt_access_ctxt *ctxt, void *arg)
+static int on_activity_detail_access(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    if (ctxt->om->om_len < 4) {
-        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-    }
-    uint32_t id = 0;
-    memcpy(&id, ctxt->om->om_data, 4);
-    ESP_LOGI(TAG, "BLE RX READ: activity_detail id=%lu", (unsigned long)id);
-    
-    char path[256];
-    snprintf(path, sizeof(path), "%s/%lu_tcx.tcx", ACTIVITY_DIR, (unsigned long)id);
-    FILE *f = fopen(path, "r");
-    if (!f) {
-        ESP_LOGE(TAG, "BLE TX: activity_detail file not found: %s", path);
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+        // Read operation - not used for activity detail (we use WRITE to request, then READ to get data)
         return BLE_ATT_ERR_UNLIKELY;
-    }
-    char chunk[256];
-    size_t n;
-    size_t total = 0;
-    while ((n = fread(chunk, 1, sizeof(chunk), f)) > 0) {
-        if (os_mbuf_append(ctxt->om, chunk, n) != 0) {
-            fclose(f);
-            return BLE_ATT_ERR_INSUFFICIENT_RES;
+    } else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+        if (ctxt->om->om_len < 4) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
         }
-        total += n;
+        uint32_t id = 0;
+        memcpy(&id, ctxt->om->om_data, 4);
+        ESP_LOGI(TAG, "BLE RX WRITE: activity_detail id=%lu", (unsigned long)id);
+        
+        char path[256];
+        // Activity files are stored in subdirectories: /spiffs/activities/{id}/Workout.tcx
+        snprintf(path, sizeof(path), "%s/%lu/Workout.tcx", ACTIVITY_DIR, (unsigned long)id);
+        FILE *f = fopen(path, "r");
+        if (!f) {
+            ESP_LOGE(TAG, "BLE TX: activity_detail file not found: %s", path);
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        char chunk[256];
+        size_t n;
+        size_t total = 0;
+        while ((n = fread(chunk, 1, sizeof(chunk), f)) > 0) {
+            if (os_mbuf_append(ctxt->om, chunk, n) != 0) {
+                fclose(f);
+                return BLE_ATT_ERR_INSUFFICIENT_RES;
+            }
+            total += n;
+        }
+        fclose(f);
+        ESP_LOGI(TAG, "BLE TX: activity_detail sent %zu bytes", total);
+        return 0;
     }
-    fclose(f);
-    ESP_LOGI(TAG, "BLE TX: activity_detail sent %zu bytes", total);
-    return 0;
+    return BLE_ATT_ERR_UNLIKELY;
 }
 
 static void notify_timer_cb(struct ble_npl_event *ev)

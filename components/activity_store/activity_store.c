@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include "esp_log.h"
 
 static const char *TAG = "activity_store";
@@ -388,10 +389,81 @@ esp_err_t activity_store_load_splits(const char *in_path_or_base,
                                      activity_store_summary_t *out_summary)
 {
     return activity_store_load_splits_page(in_path_or_base,
-                                           0,
-                                           out_rows,
-                                           max_rows,
-                                           out_count,
-                                           NULL,
-                                           out_summary);
+                                            0,
+                                            out_rows,
+                                            max_rows,
+                                            out_count,
+                                            NULL,
+                                            out_summary);
+}
+
+esp_err_t activity_store_delete_file(uint32_t file_id)
+{
+    if (file_id == 0) {
+        ESP_LOGW(TAG, "Invalid file_id: 0");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    char base_path[256];
+    snprintf(base_path, sizeof(base_path), STORAGE_MOUNT "/activities/%lu", (unsigned long)file_id);
+    
+    // Files to delete for this activity
+    const char *files[] = {
+        "Workout.tcx",
+        "Strokes.csv",
+        "Splits.csv",
+        "Summary.txt",
+        "Route.gpx"
+    };
+    
+    bool any_deleted = false;
+    for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+        char path[256];
+        int n = snprintf(path, sizeof(path), "%s/%s", base_path, files[i]);
+        if (n < 0 || (size_t)n >= sizeof(path)) {
+            ESP_LOGW(TAG, "Path too long: %s/%s", base_path, files[i]);
+            continue;
+        }
+        
+        if (remove(path) == 0) {
+            ESP_LOGI(TAG, "Deleted: %s", path);
+            any_deleted = true;
+        }
+    }
+    
+    // Also try to remove the activity directory
+    if (rmdir(base_path) == 0) {
+        ESP_LOGI(TAG, "Removed directory: %s", base_path);
+    }
+    
+    // Remove from index file
+    char index_path[256];
+    snprintf(index_path, sizeof(index_path), "%s/activities/index.txt", STORAGE_MOUNT);
+    
+    FILE *f = fopen(index_path, "r");
+    if (f) {
+        char lines[100][256];
+        size_t line_count = 0;
+        char line[256];
+        while (fgets(line, sizeof(line), f) && line_count < 100) {
+            strip_newline(line);
+            // Check if this line contains the file_id
+            if (strstr(line, base_path) == NULL) {
+                strncpy(lines[line_count], line, sizeof(lines[line_count]));
+                line_count++;
+            }
+        }
+        fclose(f);
+        
+        // Rewrite index without the deleted activity
+        f = fopen(index_path, "w");
+        if (f) {
+            for (size_t i = 0; i < line_count; i++) {
+                fprintf(f, "%s\n", lines[i]);
+            }
+            fclose(f);
+        }
+    }
+    
+    return any_deleted ? ESP_OK : ESP_ERR_NOT_FOUND;
 }
